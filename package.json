@@ -9,13 +9,16 @@
   },
   "scripts": {
     "dev": "node --env-file-if-exists=.env --watch src/index.ts",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "npm run hostinger:build",
+    "hostinger:install": "npm ci",
+    "hostinger:build": "npm run compile && npm run db:migrate:prod",
+    "compile": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "start": "node dist/src/index.js",
     "test": "node --env-file-if-exists=.env --test --test-concurrency=1 \"test/**/*.test.ts\"",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file-if-exists=.env src/migrate.ts",
-    "db:migrate:prod": "node dist/src/migrate.js",
+    "db:migrate:prod": "node --env-file-if-exists=.env dist/src/migrate.js",
     "db:seed": "node --env-file-if-exists=.env scripts/seed.ts",
     "invitar": "node --env-file-if-exists=.env scripts/invitar.ts"
   },

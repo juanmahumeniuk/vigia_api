@@ -69,7 +69,8 @@ curl -s localhost:3000/api/v1/rondines/semana -H "Authorization: Bearer $TOKEN" 
 | `npm run dev` | API con recarga (`node --watch`) |
 | `npm test` | Tests de integración contra `TEST_DATABASE_URL`. **Borra y recrea esa base** |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm run build` | Compila a `dist/` |
+| `npm run build` | Compila a `dist/` **y migra** la base de `DATABASE_URL` (lo que corre Hostinger) |
+| `npm run compile` | Solo compila a `dist/` |
 | `npm start` | Corre `dist/` (producción) |
 | `npm run db:generate` | Genera la migración SQL después de cambiar `src/db/schema.ts` |
 | `npm run db:migrate` | Aplica las migraciones pendientes (desde `src/`) |
@@ -92,8 +93,9 @@ Requiere el plan **Business** o **Cloud**, que incluyen *Node.js Web Apps*. Es e
 2. **Repositorio.** Subir este repo a GitHub.
 3. **Node.js Web App.** hPanel → Websites → Add website → Node.js Web App → GitHub (rama `main`):
    - Node: **24.x** (o 22.x si no aparece la 24)
-   - Install: `npm ci` (o el que ponga el panel por defecto). TypeScript y los `@types` están en `dependencies` a propósito: Hostinger instala sin devDependencies y el build los necesita
-   - Build: `npm run build && npm run db:migrate:prod`
+   - Preset: **Express** · Gestor: **npm** · Archivo de entrada: `dist/src/index.js`
+   - Install: `npm run hostinger:install` (`npm ci`). TypeScript y los `@types` están en `dependencies` a propósito: Hostinger instala sin devDependencies y el build los necesita
+   - Build: `npm run build` (= `hostinger:build`: compila **y aplica las migraciones pendientes**, igual que la API de SentidoBiologico). Por eso `DATABASE_URL` tiene que estar cargada **antes** del primer deploy
    - Start: `npm start`
 4. **Variables de entorno** (en hPanel, nunca en el repo):
 
@@ -106,7 +108,7 @@ Requiere el plan **Business** o **Cloud**, que incluyen *Node.js Web Apps*. Es e
    | `BARRIO_TZ` | `America/Argentina/Buenos_Aires` |
    | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Casilla de envío. Con el correo de Hostinger: `smtp.hostinger.com`, `465`, `true`. En producción son obligatorias |
 
-   Opcionales: `DB_POOL_LIMIT` (5) y `AUTH_RATE_LIMIT_MAX` (20). `PORT` lo asigna Hostinger.
+   Opcionales: `DB_POOL_LIMIT` (5; el hosting compartido limita las conexiones por usuario) y `AUTH_RATE_LIMIT_MAX` (20). **No** cargar `PORT` (lo asigna Hostinger) ni `TEST_DATABASE_URL` (los tests borran esa base).
 5. **HTTPS.** Activar el SSL y "Forzar HTTPS" en el dominio de la app (RNF-02).
 6. **Primer comité.** Por SSH, en la carpeta de la app: `node dist/scripts/invitar.js presidente@mail.com Nombre Apellido`. Desde ahí, el comité da de alta al resto desde la app.
 7. **Verificar.** `https://<dominio>/health/ready` → `{"status":"ok","db":"up"}`.
