@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "node --env-file-if-exists=.env --watch src/index.ts",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "start": "node dist/src/index.js",
     "test": "node --env-file-if-exists=.env --test --test-concurrency=1 \"test/**/*.test.ts\"",
@@ -20,19 +20,19 @@
     "invitar": "node --env-file-if-exists=.env scripts/invitar.ts"
   },
   "dependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.20.4",
+    "@types/nodemailer": "^8.0.2",
     "drizzle-orm": "^0.45.3",
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.0",
     "helmet": "^8.3.0",
     "mysql2": "^3.24.4",
-    "nodemailer": "^10.0.10"
+    "nodemailer": "^10.0.10",
+    "typescript": "^7.0.2"
   },
   "devDependencies": {
-    "@types/express": "^5.0.6",
-    "@types/node": "^22.20.4",
-    "@types/nodemailer": "^8.0.2",
     "drizzle-kit": "^0.31.11",
-    "typescript": "^7.0.2",
     "yaml": "^2.9.1"
   }
 }

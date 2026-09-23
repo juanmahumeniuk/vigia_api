@@ -1,0 +1,5 @@
+{
+  // Lo que se compila para producción: sin test/ (usa dependencias de desarrollo).
+  "extends": "./tsconfig.json",
+  "include": ["src", "scripts"]
+}

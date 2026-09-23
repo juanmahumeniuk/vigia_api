@@ -54,6 +54,13 @@ async function login(usuario: string, password = PASSWORD_SEED): Promise<string>
     return r.body.token;
 }
 
+/** Espera (hasta 2 s) un correo que se manda sin await, en vez de un sleep fijo. */
+async function esperarCorreo(condicion: (c: (typeof bandeja)[number]) => boolean, desde = 0) {
+    for (let i = 0; i < 100 && !bandeja.slice(desde).some(condicion); i++) {
+        await new Promise((r) => setTimeout(r, 20));
+    }
+}
+
 /** Último enlace de clave mandado a un email (sin SMTP los correos quedan en `bandeja`). */
 function tokenDelCorreo(email: string): string {
     const correo = bandeja.findLast((c) => c.para === email);
@@ -163,7 +170,7 @@ describe('invitación y contraseña', () => {
         assert.equal((await pedir('POST', '/api/v1/auth/recuperar', { body: { email: 'nadie@vigia.test' } })).status, 204);
         const previa = await login('diego');
         assert.equal((await pedir('POST', '/api/v1/auth/recuperar', { body: { email: 'diego@vigia.test' } })).status, 204);
-        await new Promise((r) => setTimeout(r, 50)); // el correo sale sin await
+        await esperarCorreo((c) => c.para === 'diego@vigia.test' && c.asunto.startsWith('Restablecer'));
         const r = await pedir('POST', '/api/v1/auth/clave', { body: { token: tokenDelCorreo('diego@vigia.test'), password: 'clave-nueva-1' } });
         assert.equal(r.status, 200);
         assert.equal((await pedir('GET', '/api/v1/yo', { token: previa })).status, 401);
@@ -260,7 +267,7 @@ describe('rondines', () => {
         const antes = bandeja.length;
         const falta = await pedir('POST', `/api/v1/rondines/${turno}/asistencia`, { token: tomas, body: { presente: false } });
         assert.equal(falta.body.mi_estado, 'ausente');
-        await new Promise((r) => setTimeout(r, 50));
+        await esperarCorreo((c) => c.para === 'laura@vigia.test', antes);
         assert.ok(bandeja.slice(antes).some((c) => c.para === 'laura@vigia.test' && c.asunto.includes('Tomás Rodríguez')));
 
         assert.equal((await pedir('POST', `/api/v1/rondines/${turno}/asistencia`, { token: jorge, body: { presente: true } })).status, 404);

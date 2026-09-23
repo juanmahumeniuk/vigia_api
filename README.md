@@ -92,7 +92,7 @@ Requiere el plan **Business** o **Cloud**, que incluyen *Node.js Web Apps*. Es e
 2. **Repositorio.** Subir este repo a GitHub.
 3. **Node.js Web App.** hPanel → Websites → Add website → Node.js Web App → GitHub (rama `main`):
    - Node: **24.x** (o 22.x si no aparece la 24)
-   - Install: `npm ci --include=dev` (TypeScript es devDependency y hace falta para compilar)
+   - Install: `npm ci` (o el que ponga el panel por defecto). TypeScript y los `@types` están en `dependencies` a propósito: Hostinger instala sin devDependencies y el build los necesita
    - Build: `npm run build && npm run db:migrate:prod`
    - Start: `npm start`
 4. **Variables de entorno** (en hPanel, nunca en el repo):
