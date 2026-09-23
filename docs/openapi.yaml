@@ -1,0 +1,880 @@
+openapi: 3.1.0
+info:
+  title: VigiaApp API
+  version: 1.1.0
+  description: |
+    API REST de VigiaApp. Parte de la especificación v1.0 (`VigiaApp/docs/especificacion_api_db.md`);
+    las diferencias con esa versión están en `docs/CAMBIOS_CLIENTE.md`.
+
+    - Todas las respuestas son `application/json; charset=utf-8` (RNF-04).
+    - Claves en `snake_case`; los booleanos viajan como `true`/`false` (RNF-07).
+    - Fechas con hora: ISO-8601 en UTC con `Z` y sin milisegundos (`2026-09-23T18:35:00Z`).
+      Fechas de calendario: `AAAA-MM-DD`. Horas: `HH:MM`.
+    - Todas las rutas, salvo `/auth/login`, `/auth/clave` y `/auth/recuperar`, exigen `Authorization: Bearer <token>`.
+    - Cualquier respuesta que no sea 2xx trae el cuerpo `Error`.
+servers:
+  - url: https://{dominio}/api/v1
+    variables:
+      dominio:
+        default: api.vigiaapp.example
+  - url: http://localhost:3000/api/v1
+    description: Desarrollo local
+security:
+  - bearer: []
+tags:
+  - name: Sesión
+  - name: Perfil
+  - name: Comité
+    description: Solo rol `comite` (si no, 403 `prohibido`).
+  - name: Inicio
+  - name: Publicaciones
+  - name: Rondines
+  - name: Alertas
+  - name: Salud
+
+paths:
+  # ---------------------------------------------------------------- Sesión
+  /auth/login:
+    post:
+      tags: [Sesión]
+      summary: Iniciar sesión con email y contraseña
+      description: Reemplaza a `/auth/codigo` + `/auth/verificar` de la spec v1.0. El vecino debe estar activo y haber elegido contraseña.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email, example: maria@vigia.test }
+                password: { type: string, example: vigia1234 }
+      responses:
+        '200': { $ref: '#/components/responses/Sesion' }
+        '400': { $ref: '#/components/responses/DatosInvalidos' }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '429': { $ref: '#/components/responses/DemasiadosIntentos' }
+
+  /auth/clave:
+    post:
+      tags: [Sesión]
+      summary: Elegir contraseña con el enlace del correo (invitación o recuperación)
+      description: |
+        El correo trae `APP_URL_CLAVE?token=<64 hex>`. La app toma el `token`, pide la contraseña y llama acá.
+        El enlace es de un solo uso (invitación: 7 días; recuperación: 1 hora). Una recuperación además cierra
+        todas las sesiones previas del vecino. Responde con una sesión nueva, igual que `/auth/login`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: { type: string, pattern: '^[0-9a-f]{64}$' }
+                password: { type: string, minLength: 8, maxLength: 128 }
+      responses:
+        '200': { $ref: '#/components/responses/Sesion' }
+        '400':
+          description: Contraseña fuera de rango, o enlace inválido, vencido o ya usado.
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+        '429': { $ref: '#/components/responses/DemasiadosIntentos' }
+
+  /auth/recuperar:
+    post:
+      tags: [Sesión]
+      summary: Pedir el correo para restablecer la contraseña
+      description: Responde 204 exista o no el email, para no revelar quién está registrado.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '204': { description: 'Si el email corresponde a un vecino activo, se le envió el enlace.' }
+        '400': { $ref: '#/components/responses/DatosInvalidos' }
+        '429': { $ref: '#/components/responses/DemasiadosIntentos' }
+
+  /auth/logout:
+    post:
+      tags: [Sesión]
+      summary: Cerrar la sesión actual
+      responses:
+        '204': { description: El token dejó de valer. }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+
+  # ---------------------------------------------------------------- Perfil
+  /yo:
+    get:
+      tags: [Perfil]
+      summary: Vecino de la sesión
+      description: La app lo llama al abrir para validar el token guardado (401 → volver al login).
+      responses:
+        '200':
+          description: Perfil propio
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Perfil' }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+
+  /yo/clave:
+    post:
+      tags: [Perfil]
+      summary: Cambiar la contraseña propia
+      description: Cierra las demás sesiones del vecino; la actual sigue válida. Si `actual` no coincide responde 400 (no 401, para no cerrar la sesión en la app).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [actual, nueva]
+              properties:
+                actual: { type: string }
+                nueva: { type: string, minLength: 8, maxLength: 128 }
+      responses:
+        '204': { description: Contraseña cambiada. }
+        '400': { $ref: '#/components/responses/DatosInvalidos' }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+
+  # ---------------------------------------------------------------- Comité
+  /manzanas:
+    get:
+      tags: [Comité]
+      summary: Manzanas del barrio (cualquier vecino)
+      responses:
+        '200':
+          description: Lista ordenada por nombre
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Manzana' } }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+    post:
+      tags: [Comité]
+      summary: Crear una manzana
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nombre]
+              properties:
+                nombre: { type: string, maxLength: 50 }
+      responses:
+        '201':
+          description: Creada
+          content: { application/json: { schema: { $ref: '#/components/schemas/Manzana' } } }
+        '400': { $ref: '#/components/responses/DatosInvalidos' }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '403': { $ref: '#/components/responses/Prohibido' }
+
+  /vecinos:
+    get:
+      tags: [Comité]
+      summary: Todos los vecinos (activos e inactivos)
+      responses:
+        '200':
+          description: Ordenados por apellido y nombre
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/VecinoAdmin' } }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '403': { $ref: '#/components/responses/Prohibido' }
+    post:
+      tags: [Comité]
+      summary: Dar de alta un vecino y enviarle la invitación por correo
+      description: |
+        El vecino queda con `invitacion_pendiente: true` hasta que usa el enlace. Si el correo falla, el
+        vecino igual queda creado y la respuesta trae `invitacion_enviada: false` (se puede reenviar).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nombre, apellido, email, manzana_id]
+              properties:
+                nombre: { type: string, maxLength: 40 }
+                apellido: { type: string, maxLength: 40 }
+                email: { type: string, format: email, maxLength: 254 }
+                telefono: { type: [string, 'null'], description: 'E.164, p. ej. +5491100000001' }
+                manzana_id: { type: integer }
+                rol: { $ref: '#/components/schemas/Rol' }
+      responses:
+        '201':
+          description: Creado
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/VecinoAdmin'
+                  - type: object
+                    required: [invitacion_enviada]
+                    properties:
+                      invitacion_enviada: { type: boolean }
+        '400': { $ref: '#/components/responses/DatosInvalidos' }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '403': { $ref: '#/components/responses/Prohibido' }
+        '409':
+          description: Ya existe un vecino con ese email o teléfono.
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+
+  /vecinos/{id}:
+    patch:
+      tags: [Comité]
+      summary: Editar o desactivar un vecino
+      description: Solo se cambian los campos enviados. `activo:false` corta sus sesiones. El comité no puede cambiar su propio rol ni desactivarse (409).
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                nombre: { type: string, maxLength: 40 }
+                apellido: { type: string, maxLength: 40 }
+                telefono: { type: [string, 'null'] }
+                manzana_id: { type: integer }
+                rol: { $ref: '#/components/schemas/Rol' }
+                activo: { type: boolean }
+      responses:
+        '200':
+          description: Vecino actualizado
+          content: { application/json: { schema: { $ref: '#/components/schemas/VecinoAdmin' } } }
+        '400': { $ref: '#/components/responses/DatosInvalidos' }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '403': { $ref: '#/components/responses/Prohibido' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '409': { $ref: '#/components/responses/Conflicto' }
+
+  /vecinos/{id}/invitacion:
+    post:
+      tags: [Comité]
+      summary: Reenviar la invitación
+      description: Invalida el enlace anterior. Si el vecino ya activó su cuenta responde 409 (que use "olvidé mi contraseña").
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '204': { description: Invitación enviada. }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '403': { $ref: '#/components/responses/Prohibido' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '409': { $ref: '#/components/responses/Conflicto' }
+
+  # ---------------------------------------------------------------- Inicio
+  /barrio/estado:
+    get:
+      tags: [Inicio]
+      summary: Vecinos en línea (RF-04)
+      description: '"En línea" = hizo alguna petición autenticada en los últimos 5 minutos (RNF-08).'
+      responses:
+        '200':
+          description: Estado del barrio
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EstadoBarrio' }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+
+  # ---------------------------------------------------------------- Publicaciones
+  /publicaciones:
+    get:
+      tags: [Publicaciones]
+      summary: Feed de actividad (RF-05) o noticias del comité (RF-06)
+      description: Últimas 50, de la más nueva a la más vieja. El listado no trae `cuerpo`.
+      parameters:
+        - { name: tipo, in: query, required: true, schema: { $ref: '#/components/schemas/TipoPublicacion' } }
+        - { name: etiqueta, in: query, required: false, schema: { $ref: '#/components/schemas/Etiqueta' } }
+      responses:
+        '200':
+          description: Publicaciones
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Publicacion' } }
+              example:
+                - { id: 1, tipo: actividad, titulo: Cierre de la calle Juárez por obra, etiqueta: null, autor: Jorge L., iniciales: JL, autor_id: 3, creado_en: '2026-09-23T18:35:00Z', respuestas: 0 }
+        '400': { $ref: '#/components/responses/DatosInvalidos' }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+    post:
+      tags: [Publicaciones]
+      summary: Publicar
+      description: Cualquier vecino publica `actividad` (sin etiqueta). `noticia` (con etiqueta obligatoria) y `firma` son solo del comité.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tipo, titulo]
+              properties:
+                tipo: { $ref: '#/components/schemas/TipoPublicacion' }
+                titulo: { type: string, maxLength: 140 }
+                cuerpo: { type: [string, 'null'], maxLength: 5000 }
+                etiqueta: { oneOf: [{ $ref: '#/components/schemas/Etiqueta' }, { type: 'null' }] }
+                firma: { type: [string, 'null'], maxLength: 40, description: 'p. ej. "Comité", "Municipio"' }
+      responses:
+        '201':
+          description: Creada
+          content: { application/json: { schema: { $ref: '#/components/schemas/PublicacionDetalle' } } }
+        '400': { $ref: '#/components/responses/DatosInvalidos' }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '403': { $ref: '#/components/responses/Prohibido' }
+
+  /publicaciones/{id}:
+    get:
+      tags: [Publicaciones]
+      summary: Una publicación con su cuerpo
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200':
+          description: Publicación
+          content: { application/json: { schema: { $ref: '#/components/schemas/PublicacionDetalle' } } }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+    delete:
+      tags: [Publicaciones]
+      summary: Borrar (el autor o el comité)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '204': { description: Borrada junto con sus respuestas. }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '403': { $ref: '#/components/responses/Prohibido' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+
+  /publicaciones/{id}/respuestas:
+    get:
+      tags: [Publicaciones]
+      summary: Respuestas de una publicación (hasta 200, de la más vieja a la más nueva)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200':
+          description: Respuestas
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Respuesta' } }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+    post:
+      tags: [Publicaciones]
+      summary: Responder
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [texto]
+              properties:
+                texto: { type: string, maxLength: 500 }
+      responses:
+        '201':
+          description: Respuesta creada
+          content: { application/json: { schema: { $ref: '#/components/schemas/Respuesta' } } }
+        '400': { $ref: '#/components/responses/DatosInvalidos' }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+
+  # ---------------------------------------------------------------- Rondines
+  /rondines/semana:
+    get:
+      tags: [Rondines]
+      summary: Grilla semanal (RF-07)
+      description: |
+        Los turnos entre `desde` y `desde + 6 días`. Por defecto `desde` es el lunes de la semana actual en la
+        zona del barrio (`BARRIO_TZ`). Si un día no tiene turno cargado, no aparece.
+      parameters:
+        - { name: desde, in: query, required: false, schema: { type: string, format: date, example: '2026-09-21' } }
+      responses:
+        '200':
+          description: Turnos ordenados por fecha
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Turno' } }
+        '400': { $ref: '#/components/responses/DatosInvalidos' }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+
+  /rondines/{id}/asistencia:
+    post:
+      tags: [Rondines]
+      summary: '"Me presento" / "No me presento" (RF-08)'
+      description: Con `presente:false` se avisa por correo a los miembros del comité para que reasignen el turno.
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [presente]
+              properties:
+                presente: { type: boolean }
+      responses:
+        '200':
+          description: El turno actualizado
+          content: { application/json: { schema: { $ref: '#/components/schemas/Turno' } } }
+        '400': { $ref: '#/components/responses/DatosInvalidos' }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '404':
+          description: El turno no existe o el vecino no está asignado.
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+
+  /rondines:
+    post:
+      tags: [Comité]
+      summary: Crear un turno (uno por fecha)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fecha, ruta]
+              properties:
+                fecha: { type: string, format: date }
+                ruta: { type: string, maxLength: 200 }
+                hora_inicio: { type: string, pattern: '^\d{2}:\d{2}$', default: '22:00' }
+                hora_fin: { type: string, pattern: '^\d{2}:\d{2}$', default: '02:00' }
+                vecino_ids: { type: array, items: { type: integer }, default: [] }
+      responses:
+        '201':
+          description: Turno creado
+          content: { application/json: { schema: { $ref: '#/components/schemas/Turno' } } }
+        '400': { $ref: '#/components/responses/DatosInvalidos' }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '403': { $ref: '#/components/responses/Prohibido' }
+        '409':
+          description: Ya hay un turno en esa fecha.
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+
+  /rondines/{id}:
+    delete:
+      tags: [Comité]
+      summary: Borrar un turno
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '204': { description: Borrado junto con sus asignaciones. }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '403': { $ref: '#/components/responses/Prohibido' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+
+  /rondines/{id}/asignaciones:
+    get:
+      tags: [Comité]
+      summary: Quiénes hacen el turno y qué respondieron
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200':
+          description: Asignaciones
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Asignacion' } }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '403': { $ref: '#/components/responses/Prohibido' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+    put:
+      tags: [Comité]
+      summary: Reasignar el turno
+      description: Reemplaza la lista. Quien sigue asignado conserva su respuesta; los nuevos quedan `pendiente`.
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [vecino_ids]
+              properties:
+                vecino_ids: { type: array, items: { type: integer } }
+      responses:
+        '200':
+          description: Asignaciones resultantes
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Asignacion' } }
+        '400': { $ref: '#/components/responses/DatosInvalidos' }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '403': { $ref: '#/components/responses/Prohibido' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+
+  # ---------------------------------------------------------------- Alertas
+  /alertas:
+    get:
+      tags: [Alertas]
+      summary: Alertas del barrio (por defecto, las activas)
+      description: |
+        Sin push, la app se entera de una alerta nueva haciendo polling de esta ruta (sugerido: cada 10 s
+        mientras está abierta). Últimas 50.
+      parameters:
+        - { name: estado, in: query, required: false, schema: { $ref: '#/components/schemas/EstadoAlerta/properties/estado', default: activa } }
+      responses:
+        '200':
+          description: Alertas
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/EstadoAlerta' } }
+        '400': { $ref: '#/components/responses/DatosInvalidos' }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+    post:
+      tags: [Alertas]
+      summary: Disparar el SOS (RF-01)
+      description: |
+        Crea la alerta y una fila `notificado` por cada otro vecino activo, en una sola transacción (RNF-01).
+        Si el vecino ya tiene una alerta activa, devuelve esa con 200 y no vuelve a avisar.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                lat: { type: [number, 'null'], minimum: -90, maximum: 90 }
+                lng: { type: [number, 'null'], minimum: -180, maximum: 180 }
+      responses:
+        '201':
+          description: Alerta creada
+          content: { application/json: { schema: { $ref: '#/components/schemas/AlertaCerrada' }, example: { id: 17, estado: activa } } }
+        '200':
+          description: Ya tenía una alerta activa; es esa.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AlertaCerrada' } } }
+        '400': { $ref: '#/components/responses/DatosInvalidos' }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+
+  /alertas/{id}:
+    get:
+      tags: [Alertas]
+      summary: Triple confirmación (RF-02). La app la consulta cada 2 s.
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200':
+          description: Estado de la alerta
+          content: { application/json: { schema: { $ref: '#/components/schemas/EstadoAlerta' } } }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+
+  /alertas/{id}/cancelar:
+    post:
+      tags: [Alertas]
+      summary: Cancelar una falsa alarma (RF-03)
+      description: Solo quien la disparó (si no, 404) y solo si sigue activa (si no, 409).
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200':
+          description: Cancelada
+          content: { application/json: { schema: { $ref: '#/components/schemas/AlertaCerrada' }, example: { id: 17, estado: cancelada } } }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '409': { $ref: '#/components/responses/Conflicto' }
+
+  /alertas/{id}/resolver:
+    post:
+      tags: [Alertas]
+      summary: Dar la emergencia por terminada
+      description: Quien la disparó o el comité. Solo si sigue activa.
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200':
+          description: Resuelta
+          content: { application/json: { schema: { $ref: '#/components/schemas/AlertaCerrada' }, example: { id: 17, estado: resuelta } } }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '403': { $ref: '#/components/responses/Prohibido' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '409': { $ref: '#/components/responses/Conflicto' }
+
+  /alertas/{id}/en-camino:
+    post:
+      tags: [Alertas]
+      summary: '"Voy en camino" (o retractarse)'
+      description: Solo los vecinos avisados (quien disparó la alerta no lo es → 404). La alerta tiene que estar activa (409).
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [en_camino]
+              properties:
+                en_camino: { type: boolean }
+      responses:
+        '200':
+          description: Estado de la alerta actualizado
+          content: { application/json: { schema: { $ref: '#/components/schemas/EstadoAlerta' } } }
+        '400': { $ref: '#/components/responses/DatosInvalidos' }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '409': { $ref: '#/components/responses/Conflicto' }
+
+  /alertas/{id}/confirmar-911:
+    post:
+      tags: [Alertas, Comité]
+      summary: Confirmar que la central 911 tomó el aviso
+      description: Idempotente. Solo con la alerta activa.
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200':
+          description: Estado de la alerta con `central_911_confirmada:true`
+          content: { application/json: { schema: { $ref: '#/components/schemas/EstadoAlerta' } } }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '403': { $ref: '#/components/responses/Prohibido' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '409': { $ref: '#/components/responses/Conflicto' }
+
+  # ---------------------------------------------------------------- Salud (fuera de /api/v1)
+  /health:
+    get:
+      tags: [Salud]
+      summary: Liveness (no toca la base)
+      servers: [{ url: 'https://{dominio}', variables: { dominio: { default: api.vigiaapp.example } } }]
+      security: []
+      responses:
+        '200': { description: 'Proceso vivo', content: { application/json: { example: { status: ok } } } }
+
+  /health/ready:
+    get:
+      tags: [Salud]
+      summary: Readiness (llega a la base)
+      servers: [{ url: 'https://{dominio}', variables: { dominio: { default: api.vigiaapp.example } } }]
+      security: []
+      responses:
+        '200': { description: 'Base accesible', content: { application/json: { example: { status: ok, db: up } } } }
+        '503': { description: 'Base caída', content: { application/json: { example: { status: error, db: down } } } }
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: 'Token de 64 hex que devuelven `/auth/login` y `/auth/clave`. Vale 24 h (RNF-03).'
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+
+  responses:
+    Sesion:
+      description: Sesión de 24 h
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Sesion' }
+    DatosInvalidos:
+      description: Falta un campo o tiene formato incorrecto.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: { codigo: datos_invalidos, mensaje: 'presente debe ser true o false.' } }
+    NoAutorizado:
+      description: Token ausente, inválido o vencido (o credenciales incorrectas en /auth/login).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: { codigo: no_autorizado, mensaje: 'Sesión vencida. Volvé a iniciar sesión.' } }
+    Prohibido:
+      description: El vecino no tiene permiso (p. ej. no es del comité).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: { codigo: prohibido, mensaje: 'Solo el comité puede hacer esto.' } }
+    NoEncontrado:
+      description: El recurso no existe.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: { codigo: no_encontrado, mensaje: 'La alerta no existe.' } }
+    Conflicto:
+      description: El estado actual no permite la operación.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: { codigo: conflicto, mensaje: 'La alerta ya no está activa.' } }
+    DemasiadosIntentos:
+      description: Más de `AUTH_RATE_LIMIT_MAX` (20) pedidos a /auth/* desde la misma IP en 15 minutos.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: { codigo: demasiados_intentos, mensaje: 'Demasiados intentos. Probá de nuevo en unos minutos.' } }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [codigo, mensaje]
+          properties:
+            codigo:
+              type: string
+              enum: [datos_invalidos, no_autorizado, prohibido, no_encontrado, conflicto, demasiados_intentos, error_interno]
+            mensaje: { type: string, description: 'Texto en castellano, apto para mostrar al usuario.' }
+
+    Rol:
+      type: string
+      enum: [vecino, vigia, comite]
+      default: vecino
+
+    Sesion:
+      type: object
+      required: [token, expira_en, vecino]
+      properties:
+        token: { type: string, pattern: '^[0-9a-f]{64}$' }
+        expira_en: { type: string, format: date-time, example: '2026-09-24T19:00:00Z' }
+        vecino:
+          type: object
+          required: [id, nombre, manzana, rol]
+          properties:
+            id: { type: integer, example: 1 }
+            nombre: { type: string, example: María Ríos, description: Nombre y apellido }
+            manzana: { type: string, example: Manzana 4 }
+            rol: { $ref: '#/components/schemas/Rol' }
+
+    Perfil:
+      type: object
+      required: [id, nombre, apellido, email, telefono, manzana_id, manzana, rol]
+      properties:
+        id: { type: integer }
+        nombre: { type: string }
+        apellido: { type: string }
+        email: { type: string, format: email }
+        telefono: { type: [string, 'null'] }
+        manzana_id: { type: integer }
+        manzana: { type: string }
+        rol: { $ref: '#/components/schemas/Rol' }
+
+    VecinoAdmin:
+      allOf:
+        - $ref: '#/components/schemas/Perfil'
+        - type: object
+          required: [activo, invitacion_pendiente, ultimo_acceso]
+          properties:
+            activo: { type: boolean }
+            invitacion_pendiente: { type: boolean, description: 'true = todavía no eligió contraseña' }
+            ultimo_acceso: { type: [string, 'null'], format: date-time }
+
+    Manzana:
+      type: object
+      required: [id, nombre]
+      properties:
+        id: { type: integer }
+        nombre: { type: string, example: Manzana 4 }
+
+    EstadoBarrio:
+      type: object
+      required: [vecinos_en_linea, vecinos_total]
+      properties:
+        vecinos_en_linea: { type: integer, example: 38 }
+        vecinos_total: { type: integer, example: 40 }
+
+    TipoPublicacion:
+      type: string
+      enum: [actividad, noticia]
+
+    Etiqueta:
+      type: string
+      enum: [obras, seguridad, alumbrado, convivencia]
+
+    Publicacion:
+      type: object
+      description: Sirve a `ActivityItem.fromJson` y a `NewsItem.fromJson` (campos extra se ignoran).
+      required: [id, tipo, titulo, etiqueta, autor, iniciales, autor_id, creado_en, respuestas]
+      properties:
+        id: { type: integer }
+        tipo: { $ref: '#/components/schemas/TipoPublicacion' }
+        titulo: { type: string }
+        etiqueta: { oneOf: [{ $ref: '#/components/schemas/Etiqueta' }, { type: 'null' }] }
+        autor: { type: string, example: Jorge L., description: 'La `firma` ("Comité") o "Nombre I."' }
+        iniciales: { type: string, example: JL }
+        autor_id: { type: integer, description: Para saber si el vecino puede borrarla }
+        creado_en: { type: string, format: date-time }
+        respuestas: { type: integer }
+
+    PublicacionDetalle:
+      allOf:
+        - $ref: '#/components/schemas/Publicacion'
+        - type: object
+          required: [cuerpo]
+          properties:
+            cuerpo: { type: [string, 'null'] }
+
+    Respuesta:
+      type: object
+      required: [id, texto, autor, iniciales, autor_id, creado_en]
+      properties:
+        id: { type: integer }
+        texto: { type: string }
+        autor: { type: string, example: María R. }
+        iniciales: { type: string, example: MR }
+        autor_id: { type: integer }
+        creado_en: { type: string, format: date-time }
+
+    Turno:
+      type: object
+      description: '`PatrolShift.fromJson` (lib/models/patrol_model.dart)'
+      required: [id, fecha, hora_inicio, hora_fin, ruta, pareja, mi_estado]
+      properties:
+        id: { type: integer, example: 102 }
+        fecha: { type: string, format: date, example: '2026-09-23' }
+        hora_inicio: { type: string, example: '22:00' }
+        hora_fin: { type: string, example: '02:00', description: 'Puede ser del día siguiente' }
+        ruta: { type: string, example: Morelos → Juárez → Parque → Morelos }
+        pareja: { type: array, items: { type: string }, example: [María R., Tomás R.] }
+        mi_estado:
+          type: [string, 'null']
+          enum: [pendiente, confirmado, ausente, null]
+          description: null si el vecino no está asignado a este turno
+
+    Asignacion:
+      type: object
+      required: [vecino_id, nombre, estado, respondido_en]
+      properties:
+        vecino_id: { type: integer }
+        nombre: { type: string, example: María Ríos }
+        estado: { type: string, enum: [pendiente, confirmado, ausente] }
+        respondido_en: { type: [string, 'null'], format: date-time }
+
+    AlertaCerrada:
+      type: object
+      required: [id, estado]
+      properties:
+        id: { type: integer }
+        estado: { type: string, enum: [activa, cancelada, resuelta] }
+
+    EstadoAlerta:
+      type: object
+      description: |
+        Los cinco primeros campos son los que ya lee `EstadoAlerta.fromJson` (lib/models/alerta.dart);
+        el resto es nuevo en v1.1.
+      required: [id, estado, central_911_confirmada, vecinos_avisados, en_camino, mi_respuesta, lat, lng, creada_en, cerrada_en, vecino]
+      properties:
+        id: { type: integer, example: 17 }
+        estado: { type: string, enum: [activa, cancelada, resuelta] }
+        central_911_confirmada: { type: boolean }
+        vecinos_avisados: { type: integer, example: 38 }
+        en_camino: { type: integer, example: 3 }
+        mi_respuesta:
+          type: [string, 'null']
+          enum: [notificado, en_camino, null]
+          description: null si quien consulta no fue avisado (p. ej. es quien la disparó)
+        lat: { type: [number, 'null'] }
+        lng: { type: [number, 'null'] }
+        creada_en: { type: string, format: date-time }
+        cerrada_en: { type: [string, 'null'], format: date-time }
+        vecino:
+          type: object
+          description: Quien disparó la alerta
+          required: [id, nombre, manzana]
+          properties:
+            id: { type: integer }
+            nombre: { type: string, example: María Ríos }
+            manzana: { type: string, example: Manzana 4 }

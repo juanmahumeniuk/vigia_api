@@ -1,0 +1,835 @@
+{
+  "version": "5",
+  "dialect": "mysql",
+  "id": "b86b73b2-9903-4f2c-8708-256458595f29",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "tables": {
+    "alerta_respuestas": {
+      "name": "alerta_respuestas",
+      "columns": {
+        "alerta_id": {
+          "name": "alerta_id",
+          "type": "int unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "vecino_id": {
+          "name": "vecino_id",
+          "type": "int unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "estado": {
+          "name": "estado",
+          "type": "enum('notificado','en_camino')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'notificado'"
+        },
+        "actualizado_en": {
+          "name": "actualizado_en",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "idx_respuestas_vecino": {
+          "name": "idx_respuestas_vecino",
+          "columns": [
+            "vecino_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "fk_respuestas_alerta": {
+          "name": "fk_respuestas_alerta",
+          "tableFrom": "alerta_respuestas",
+          "tableTo": "alertas",
+          "columnsFrom": [
+            "alerta_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "fk_respuestas_vecino": {
+          "name": "fk_respuestas_vecino",
+          "tableFrom": "alerta_respuestas",
+          "tableTo": "vecinos",
+          "columnsFrom": [
+            "vecino_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "alerta_respuestas_alerta_id_vecino_id_pk": {
+          "name": "alerta_respuestas_alerta_id_vecino_id_pk",
+          "columns": [
+            "alerta_id",
+            "vecino_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "alertas": {
+      "name": "alertas",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "vecino_id": {
+          "name": "vecino_id",
+          "type": "int unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "lat": {
+          "name": "lat",
+          "type": "decimal(9,6)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lng": {
+          "name": "lng",
+          "type": "decimal(9,6)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "estado": {
+          "name": "estado",
+          "type": "enum('activa','cancelada','resuelta')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'activa'"
+        },
+        "central_911_confirmada": {
+          "name": "central_911_confirmada",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "creada_en": {
+          "name": "creada_en",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "cerrada_en": {
+          "name": "cerrada_en",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_alertas_estado_fecha": {
+          "name": "idx_alertas_estado_fecha",
+          "columns": [
+            "estado",
+            "creada_en"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "fk_alertas_vecino": {
+          "name": "fk_alertas_vecino",
+          "tableFrom": "alertas",
+          "tableTo": "vecinos",
+          "columnsFrom": [
+            "vecino_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "alertas_id": {
+          "name": "alertas_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "manzanas": {
+      "name": "manzanas",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "nombre": {
+          "name": "nombre",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "manzanas_id": {
+          "name": "manzanas_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "publicacion_respuestas": {
+      "name": "publicacion_respuestas",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "publicacion_id": {
+          "name": "publicacion_id",
+          "type": "int unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "autor_id": {
+          "name": "autor_id",
+          "type": "int unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "texto": {
+          "name": "texto",
+          "type": "varchar(500)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "idx_respuestas_publicacion": {
+          "name": "idx_respuestas_publicacion",
+          "columns": [
+            "publicacion_id",
+            "creado_en"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "fk_pub_respuestas_publicacion": {
+          "name": "fk_pub_respuestas_publicacion",
+          "tableFrom": "publicacion_respuestas",
+          "tableTo": "publicaciones",
+          "columnsFrom": [
+            "publicacion_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "fk_pub_respuestas_autor": {
+          "name": "fk_pub_respuestas_autor",
+          "tableFrom": "publicacion_respuestas",
+          "tableTo": "vecinos",
+          "columnsFrom": [
+            "autor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "publicacion_respuestas_id": {
+          "name": "publicacion_respuestas_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "publicaciones": {
+      "name": "publicaciones",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "autor_id": {
+          "name": "autor_id",
+          "type": "int unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "firma": {
+          "name": "firma",
+          "type": "varchar(40)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "tipo": {
+          "name": "tipo",
+          "type": "enum('actividad','noticia')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "etiqueta": {
+          "name": "etiqueta",
+          "type": "enum('obras','seguridad','alumbrado','convivencia')",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "titulo": {
+          "name": "titulo",
+          "type": "varchar(140)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cuerpo": {
+          "name": "cuerpo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "idx_publicaciones_tipo_fecha": {
+          "name": "idx_publicaciones_tipo_fecha",
+          "columns": [
+            "tipo",
+            "creado_en"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "fk_publicaciones_autor": {
+          "name": "fk_publicaciones_autor",
+          "tableFrom": "publicaciones",
+          "tableTo": "vecinos",
+          "columnsFrom": [
+            "autor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "publicaciones_id": {
+          "name": "publicaciones_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {
+        "chk_publicaciones_etiqueta": {
+          "name": "chk_publicaciones_etiqueta",
+          "value": "(tipo = 'noticia') = (etiqueta IS NOT NULL)"
+        }
+      }
+    },
+    "sesiones": {
+      "name": "sesiones",
+      "columns": {
+        "token_hash": {
+          "name": "token_hash",
+          "type": "char(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "vecino_id": {
+          "name": "vecino_id",
+          "type": "int unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "creada_en": {
+          "name": "creada_en",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "expira_en": {
+          "name": "expira_en",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_sesiones_vecino": {
+          "name": "idx_sesiones_vecino",
+          "columns": [
+            "vecino_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "fk_sesiones_vecino": {
+          "name": "fk_sesiones_vecino",
+          "tableFrom": "sesiones",
+          "tableTo": "vecinos",
+          "columnsFrom": [
+            "vecino_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "sesiones_token_hash": {
+          "name": "sesiones_token_hash",
+          "columns": [
+            "token_hash"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "tokens_clave": {
+      "name": "tokens_clave",
+      "columns": {
+        "token_hash": {
+          "name": "token_hash",
+          "type": "char(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "vecino_id": {
+          "name": "vecino_id",
+          "type": "int unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tipo": {
+          "name": "tipo",
+          "type": "enum('invitacion','recuperacion')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expira_en": {
+          "name": "expira_en",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_tokens_vecino": {
+          "name": "idx_tokens_vecino",
+          "columns": [
+            "vecino_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "fk_tokens_vecino": {
+          "name": "fk_tokens_vecino",
+          "tableFrom": "tokens_clave",
+          "tableTo": "vecinos",
+          "columnsFrom": [
+            "vecino_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "tokens_clave_token_hash": {
+          "name": "tokens_clave_token_hash",
+          "columns": [
+            "token_hash"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "turno_asignaciones": {
+      "name": "turno_asignaciones",
+      "columns": {
+        "turno_id": {
+          "name": "turno_id",
+          "type": "int unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "vecino_id": {
+          "name": "vecino_id",
+          "type": "int unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "estado": {
+          "name": "estado",
+          "type": "enum('pendiente','confirmado','ausente')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'pendiente'"
+        },
+        "respondido_en": {
+          "name": "respondido_en",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_asignaciones_vecino": {
+          "name": "idx_asignaciones_vecino",
+          "columns": [
+            "vecino_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "fk_asignaciones_turno": {
+          "name": "fk_asignaciones_turno",
+          "tableFrom": "turno_asignaciones",
+          "tableTo": "turnos_rondin",
+          "columnsFrom": [
+            "turno_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "fk_asignaciones_vecino": {
+          "name": "fk_asignaciones_vecino",
+          "tableFrom": "turno_asignaciones",
+          "tableTo": "vecinos",
+          "columnsFrom": [
+            "vecino_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "turno_asignaciones_turno_id_vecino_id_pk": {
+          "name": "turno_asignaciones_turno_id_vecino_id_pk",
+          "columns": [
+            "turno_id",
+            "vecino_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "turnos_rondin": {
+      "name": "turnos_rondin",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "fecha": {
+          "name": "fecha",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hora_inicio": {
+          "name": "hora_inicio",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'22:00:00'"
+        },
+        "hora_fin": {
+          "name": "hora_fin",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'02:00:00'"
+        },
+        "ruta": {
+          "name": "ruta",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "uq_turnos_fecha": {
+          "name": "uq_turnos_fecha",
+          "columns": [
+            "fecha"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "turnos_rondin_id": {
+          "name": "turnos_rondin_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "vecinos": {
+      "name": "vecinos",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "nombre": {
+          "name": "nombre",
+          "type": "varchar(40)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "apellido": {
+          "name": "apellido",
+          "type": "varchar(40)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "email": {
+          "name": "email",
+          "type": "varchar(254)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "password_hash": {
+          "name": "password_hash",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "telefono": {
+          "name": "telefono",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "manzana_id": {
+          "name": "manzana_id",
+          "type": "int unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "rol": {
+          "name": "rol",
+          "type": "enum('vecino','vigia','comite')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'vecino'"
+        },
+        "activo": {
+          "name": "activo",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "ultimo_acceso": {
+          "name": "ultimo_acceso",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "uq_vecinos_email": {
+          "name": "uq_vecinos_email",
+          "columns": [
+            "email"
+          ],
+          "isUnique": true
+        },
+        "uq_vecinos_telefono": {
+          "name": "uq_vecinos_telefono",
+          "columns": [
+            "telefono"
+          ],
+          "isUnique": true
+        },
+        "idx_vecinos_acceso": {
+          "name": "idx_vecinos_acceso",
+          "columns": [
+            "activo",
+            "ultimo_acceso"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "fk_vecinos_manzana": {
+          "name": "fk_vecinos_manzana",
+          "tableFrom": "vecinos",
+          "tableTo": "manzanas",
+          "columnsFrom": [
+            "manzana_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "vecinos_id": {
+          "name": "vecinos_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    }
+  },
+  "views": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "tables": {},
+    "indexes": {}
+  }
+}

@@ -1,0 +1,30 @@
+# Dependencias
+node_modules/
+
+# Build
+dist/
+*.tsbuildinfo
+
+# Entorno y secretos (solo se versiona el ejemplo)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Logs y cobertura
+logs/
+*.log
+npm-debug.log*
+coverage/
+
+# Editores y sistema operativo
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Herramientas locales
+.claude/
+graphify-out/
