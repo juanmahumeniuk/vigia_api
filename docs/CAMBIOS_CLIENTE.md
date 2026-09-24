@@ -69,7 +69,7 @@ Días después (token vencido, 401) ──► pantalla Login ──► POST /aut
 Olvidó la clave ──► POST /auth/recuperar {email} ──► email ──► mismo "Elegí tu contraseña"
 ```
 
-- **`APP_URL_CLAVE`** se configura en el servidor. Hay dos opciones:
+- **`APP_URL_CLAVE`** se configura en el servidor: `https://<dominio>/clave`. Gmail y otros clientes no dejan tocar `vigiaapp://`, así que el correo lleva ese https y la API responde una página con el botón "Abrir VigiaApp" (`vigiaapp://clave?token=…`) y el código para pegar a mano. Cómo recibe la app el deep link:
   - **Deep link** `vigiaapp://clave` (lo más simple). Android necesita un `intent-filter` (§3.4) y la app lee el enlace con el paquete [`app_links`](https://pub.dev/packages/app_links).
   - **App Link HTTPS** (`https://<dominio>/clave`). Funciona también en el navegador, pero requiere publicar `assetlinks.json` en el dominio.
   - Mientras no haya deep link, la pantalla "Elegí tu contraseña" puede aceptar que el vecino **pegue el enlace o el token** del correo: `Uri.parse(texto).queryParameters['token'] ?? texto`.
