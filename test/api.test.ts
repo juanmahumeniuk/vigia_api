@@ -141,6 +141,14 @@ describe('invitación y contraseña', () => {
         assert.equal(alta.body.invitacion_enviada, true);
 
         const token = tokenDelCorreo('nora@vigia.test');
+        // El correo trae un https que cae en /clave, y esa página abre la app con el deep link.
+        const html = bandeja.findLast((c) => c.para === 'nora@vigia.test')!.html!;
+        assert.ok(html.includes(`/clave?token=${token}`));
+        const puente = await fetch(`${base}/clave?token=${token}`);
+        assert.equal(puente.status, 200);
+        assert.ok((await puente.text()).includes(`href="vigiaapp://clave?token=${token}"`));
+        assert.equal((await fetch(`${base}/clave?token="><script>`)).status, 400);
+
         const corta = await pedir('POST', '/api/v1/auth/clave', { body: { token, password: 'corta' } });
         assert.equal(corta.status, 400);
 

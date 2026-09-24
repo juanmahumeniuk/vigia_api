@@ -104,7 +104,7 @@ Requiere el plan **Business** o **Cloud**, que incluyen *Node.js Web Apps*. Es e
    | `NODE_ENV` | `production` |
    | `DATABASE_URL` | `mysql://uXXXX_vigia:<pass>@127.0.0.1:3306/uXXXX_vigia` (siempre `127.0.0.1`, no `localhost` ni `srvNNNN.hstgr.io`). Si la contraseña tiene `@ : / # ?`, va codificada en URL |
    | `TRUST_PROXY` | `1` |
-   | `APP_URL_CLAVE` | Base del enlace de los correos, p. ej. `vigiaapp://clave` (ver `docs/CAMBIOS_CLIENTE.md` §3) |
+   | `APP_URL_CLAVE` | `https://<dominio>/clave`: página de la API que abre la app con `vigiaapp://clave` (los correos no dejan tocar ese esquema directo; ver `docs/CAMBIOS_CLIENTE.md` §3) |
    | `BARRIO_TZ` | `America/Argentina/Buenos_Aires` |
    | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Casilla de envío. Con el correo de Hostinger: `smtp.hostinger.com`, `465`, `true`. En producción son obligatorias |
 
