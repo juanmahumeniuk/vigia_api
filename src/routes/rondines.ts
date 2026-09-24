@@ -6,7 +6,7 @@ import { config } from '../config.ts';
 import { db } from '../db/index.ts';
 import { turnoAsignaciones, turnosRondin, vecinos } from '../db/schema.ts';
 import { conflicto, errnoMysql, invalido, noEncontrado } from '../errors.ts';
-import { enviarSinEsperar } from '../mail.ts';
+import { correo, enviarSinEsperar } from '../mail.ts';
 import * as validar from '../validar.ts';
 
 export const rutasRondines = Router();
@@ -84,11 +84,15 @@ async function avisarAusencia(vecinoId: number, turno: { fecha: string; hora_ini
         .from(vecinos)
         .where(and(eq(vecinos.rol, 'comite'), eq(vecinos.activo, true)));
     for (const { email } of comite) {
-        enviarSinEsperar({
-            para: email,
-            asunto: `Rondín del ${turno.fecha}: ${v!.nombre} ${v!.apellido} no se presenta`,
-            texto: `${v!.nombre} ${v!.apellido} avisó que no se presenta al rondín del ${turno.fecha} (${turno.hora_inicio}–${turno.hora_fin}, ${turno.ruta}).\n\nHay que reasignar el turno desde el panel del comité.`,
-        });
+        enviarSinEsperar(
+            correo(email, `Rondín del ${turno.fecha}: ${v!.nombre} ${v!.apellido} no se presenta`, {
+                titulo: 'Turno de rondín sin cubrir',
+                parrafos: [
+                    `${v!.nombre} ${v!.apellido} avisó que no se presenta al rondín del ${turno.fecha} (${turno.hora_inicio}–${turno.hora_fin}, ${turno.ruta}).`,
+                    'Hay que reasignar el turno desde el panel del comité.',
+                ],
+            }),
+        );
     }
 }
 

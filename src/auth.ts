@@ -5,7 +5,7 @@ import { config } from './config.ts';
 import { db } from './db/index.ts';
 import { manzanas, sesiones, tokensClave, vecinos } from './db/schema.ts';
 import { HttpError } from './errors.ts';
-import { enviarCorreo } from './mail.ts';
+import { correo, enviarCorreo } from './mail.ts';
 import { iso } from './validar.ts';
 
 export type Rol = (typeof vecinos.$inferSelect)['rol'];
@@ -97,15 +97,20 @@ export async function enviarEnlaceClave(
     const enlace = `${config.appUrlClave}?token=${token}`;
     await enviarCorreo(
         tipo === 'invitacion'
-            ? {
-                  para: vecino.email,
-                  asunto: 'Te invitaron a VigiaApp',
-                  texto: `Hola ${vecino.nombre}:\n\nEl comité del barrio te sumó a la red de VigiaApp.\nAbrí este enlace desde tu celular para elegir tu contraseña (vence en 7 días):\n\n${enlace}\n\nSi no esperabas este correo, ignoralo.`,
-              }
-            : {
-                  para: vecino.email,
-                  asunto: 'Restablecer tu contraseña de VigiaApp',
-                  texto: `Hola ${vecino.nombre}:\n\nPara elegir una contraseña nueva abrí este enlace (vence en 1 hora):\n\n${enlace}\n\nSi no lo pediste, ignoralo: tu contraseña actual sigue funcionando.`,
-              },
+            ? correo(vecino.email, 'Te invitaron a VigiaApp', {
+                  titulo: `¡Hola ${vecino.nombre}!`,
+                  parrafos: [
+                      'El comité del barrio te sumó a la red de VigiaApp.',
+                      'Abrí este enlace desde tu celular (con la app instalada) para elegir tu contraseña. Vence en 7 días.',
+                  ],
+                  boton: { texto: 'Elegir mi contraseña', url: enlace },
+                  pie: 'Si no esperabas este correo, ignoralo.',
+              })
+            : correo(vecino.email, 'Restablecer tu contraseña de VigiaApp', {
+                  titulo: `Hola ${vecino.nombre}:`,
+                  parrafos: ['Para elegir una contraseña nueva abrí este enlace desde tu celular. Vence en 1 hora.'],
+                  boton: { texto: 'Cambiar mi contraseña', url: enlace },
+                  pie: 'Si no lo pediste, ignoralo: tu contraseña actual sigue funcionando.',
+              }),
     );
 }

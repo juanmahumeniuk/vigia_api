@@ -16,14 +16,16 @@ if (esProduccion && !smtpHost) {
     throw new Error('Falta SMTP_HOST: en producción las invitaciones tienen que salir por correo.');
 }
 
+const puerto = Number(process.env.PORT) || 3000;
+
 export const config = {
     esProduccion,
-    puerto: Number(process.env.PORT) || 3000,
+    puerto,
     databaseUrl: requerida('DATABASE_URL'),
     dbPoolLimit: Number(process.env.DB_POOL_LIMIT) || 5,
     trustProxy: Number(process.env.TRUST_PROXY) || 0,
     barrioTz: process.env.BARRIO_TZ?.trim() || 'America/Argentina/Buenos_Aires',
-    appUrlClave: esProduccion ? requerida('APP_URL_CLAVE') : process.env.APP_URL_CLAVE?.trim() || 'vigiaapp://clave',
+    appUrlClave: esProduccion ? requerida('APP_URL_CLAVE') : process.env.APP_URL_CLAVE?.trim() || `http://localhost:${puerto}/clave`,
     authRateLimitMax: Number(process.env.AUTH_RATE_LIMIT_MAX) || 20,
     smtp: smtpHost
         ? {
