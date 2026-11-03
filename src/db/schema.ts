@@ -26,6 +26,7 @@ import {
 const ahora = sql`CURRENT_TIMESTAMP`;
 const id = () => int('id', { unsigned: true }).autoincrement().primaryKey();
 const fk = (columna: string) => int(columna, { unsigned: true }).notNull();
+const coordenada = (columna: string) => decimal(columna, { precision: 9, scale: 6, mode: 'number' });
 
 export const ROLES = ['vecino', 'vigia', 'comite'] as const;
 export const ETIQUETAS = ['obras', 'seguridad', 'alumbrado', 'convivencia'] as const;
@@ -181,8 +182,10 @@ export const alertas = mysqlTable(
     {
         id: id(),
         vecinoId: fk('vecino_id'),
-        lat: decimal('lat', { precision: 9, scale: 6, mode: 'number' }), // NULL hasta tener GPS
-        lng: decimal('lng', { precision: 9, scale: 6, mode: 'number' }),
+        // Última ubicación de quien la disparó (la app la manda mientras la alerta está abierta).
+        lat: coordenada('lat'),
+        lng: coordenada('lng'),
+        ubicacionEn: datetime('ubicacion_en'),
         estado: mysqlEnum('estado', ['activa', 'cancelada', 'resuelta']).notNull().default('activa'),
         central911Confirmada: boolean('central_911_confirmada').notNull().default(false),
         fotoId: fotoId(),
@@ -203,6 +206,10 @@ export const alertaRespuestas = mysqlTable(
         vecinoId: fk('vecino_id'),
         estado: mysqlEnum('estado', ['notificado', 'en_camino']).notNull().default('notificado'),
         actualizadoEn: datetime('actualizado_en').notNull().default(ahora),
+        // Ubicación del vecino mientras va en camino. Se borra con "ya no voy" y al cerrar la alerta.
+        lat: coordenada('lat'),
+        lng: coordenada('lng'),
+        ubicacionEn: datetime('ubicacion_en'),
     },
     (t) => [
         primaryKey({ columns: [t.alertaId, t.vecinoId] }),

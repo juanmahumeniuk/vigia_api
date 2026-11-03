@@ -428,6 +428,43 @@ describe('fotos y chat', () => {
     });
 });
 
+describe('ubicación en vivo', () => {
+    it('la víctima y los que van en camino comparten su ubicación; "ya no voy" y cerrar la borran', async () => {
+        const { body } = await pedir('POST', '/api/v1/alertas', { token: tomas, body: {} });
+        const id = body.id;
+        const ubicar = (token: string, lat: number, lng: number) =>
+            pedir('POST', `/api/v1/alertas/${id}/ubicacion`, { token, body: { lat, lng } });
+        const detalle = async () => (await pedir('GET', `/api/v1/alertas/${id}`, { token: laura })).body;
+        const enCamino = (en_camino: boolean) => pedir('POST', `/api/v1/alertas/${id}/en-camino`, { token: jorge, body: { en_camino } });
+
+        assert.equal((await ubicar(tomas, -34.6, -58.4)).status, 204);
+        assert.equal((await ubicar(tomas, -34.6, -58.4)).status, 204); // el mismo punto dos veces
+        assert.equal((await ubicar(tomas, 200, 0)).status, 400);
+        assert.equal((await ubicar(jorge, -34.61, -58.41)).status, 403); // todavía no dijo "voy"
+
+        await enCamino(true);
+        assert.equal((await ubicar(jorge, -34.61, -58.41)).status, 204);
+        assert.equal((await ubicar(jorge, -34.61, -58.41)).status, 204);
+        let a = await detalle();
+        assert.equal(a.lat, -34.6);
+        assert.match(a.ubicacion_en, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+        assert.equal(a.en_camino_ubicaciones.length, 1);
+        assert.equal(a.en_camino_ubicaciones[0].lat, -34.61);
+        assert.match(a.en_camino_ubicaciones[0].nombre, /^Jorge /);
+        // El listado del Inicio no trae las ubicaciones de los que van.
+        assert.equal((await pedir('GET', '/api/v1/alertas', { token: laura })).body[0].en_camino_ubicaciones, undefined);
+
+        await enCamino(false);
+        assert.deepEqual((await detalle()).en_camino_ubicaciones, []);
+
+        await enCamino(true);
+        await ubicar(jorge, -34.61, -58.41);
+        await pedir('POST', `/api/v1/alertas/${id}/resolver`, { token: tomas });
+        assert.deepEqual((await detalle()).en_camino_ubicaciones, []);
+        assert.equal((await ubicar(tomas, -34.6, -58.4)).status, 409);
+    });
+});
+
 describe('documentación', () => {
     it('cada ruta montada figura en docs/openapi.yaml (y viceversa)', async () => {
         const doc = parse(await readFile(new URL('../docs/openapi.yaml', import.meta.url), 'utf8'));

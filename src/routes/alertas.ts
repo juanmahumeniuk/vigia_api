@@ -1,7 +1,7 @@
 // Alertas SOS: disparo (RF-01), triple confirmación (RF-02), cancelación (RF-03) y el resto del
 // ciclo que la spec dejaba abierto: alertas activas del barrio, "voy en camino", 911 y resolver.
 import { Router } from 'express';
-import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, sql, type SQL } from 'drizzle-orm';
 import { requireComite } from '../auth.ts';
 import { db } from '../db/index.ts';
 import { alertaRespuestas, alertas, manzanas, vecinos } from '../db/schema.ts';
@@ -26,6 +26,7 @@ async function buscarAlertas(where: SQL, vecinoId: number, limite: number) {
             lat: alertas.lat,
             lng: alertas.lng,
             fotoId: alertas.fotoId,
+            ubicacionEn: alertas.ubicacionEn,
             creadaEn: alertas.creadaEn,
             cerradaEn: alertas.cerradaEn,
             autorId: vecinos.id,
@@ -52,17 +53,44 @@ async function buscarAlertas(where: SQL, vecinoId: number, limite: number) {
         lat: a.lat,
         lng: a.lng,
         foto_id: a.fotoId,
+        ubicacion_en: validar.iso(a.ubicacionEn),
         creada_en: validar.iso(a.creadaEn),
         cerrada_en: validar.iso(a.cerradaEn),
         vecino: { id: a.autorId, nombre: `${a.autorNombre} ${a.autorApellido}`, manzana: a.manzana },
     }));
 }
 
+/** Vecinos en camino que comparten su ubicación. Solo va en el detalle, no en el listado del Inicio. */
+async function ubicacionesEnCamino(alertaId: number) {
+    const filas = await db
+        .select({
+            vecinoId: alertaRespuestas.vecinoId,
+            nombre: vecinos.nombre,
+            apellido: vecinos.apellido,
+            lat: alertaRespuestas.lat,
+            lng: alertaRespuestas.lng,
+            ubicacionEn: alertaRespuestas.ubicacionEn,
+        })
+        .from(alertaRespuestas)
+        .innerJoin(vecinos, eq(vecinos.id, alertaRespuestas.vecinoId))
+        .where(and(eq(alertaRespuestas.alertaId, alertaId), eq(alertaRespuestas.estado, 'en_camino'), isNotNull(alertaRespuestas.lat)));
+    return filas.map((f) => ({
+        vecino_id: f.vecinoId,
+        nombre: `${f.nombre} ${f.apellido}`,
+        lat: f.lat,
+        lng: f.lng,
+        actualizado_en: validar.iso(f.ubicacionEn),
+    }));
+}
+
 async function alertaPorId(id: number, vecinoId: number) {
     const [a] = await buscarAlertas(eq(alertas.id, id), vecinoId, 1);
     if (!a) throw noEncontrado('La alerta no existe.');
-    return a;
+    return { ...a, en_camino_ubicaciones: await ubicacionesEnCamino(a.id) };
 }
+
+/** Privacidad: la ubicación de los vecinos solo se guarda mientras van en camino a una alerta activa. */
+const sinUbicacion = { lat: null, lng: null, ubicacionEn: null };
 
 /** Cierra una alerta activa. 0 filas = otro pedido la cerró antes (carrera) → 409. */
 async function cerrar(id: number, estado: 'cancelada' | 'resuelta') {
@@ -71,6 +99,7 @@ async function cerrar(id: number, estado: 'cancelada' | 'resuelta') {
         .set({ estado, cerradaEn: sql`UTC_TIMESTAMP()` })
         .where(and(eq(alertas.id, id), eq(alertas.estado, 'activa')));
     if (r.affectedRows === 0) throw conflicto('La alerta ya no está activa.');
+    await db.update(alertaRespuestas).set(sinUbicacion).where(eq(alertaRespuestas.alertaId, id));
     return { id, estado };
 }
 
@@ -90,7 +119,8 @@ rutasAlertas.post('/alertas', async (req, res) => {
             .limit(1);
         if (activa) return { id: activa.id, nueva: false };
 
-        const [r] = await tx.insert(alertas).values({ vecinoId: yo, lat, lng }).$returningId();
+        const ubicacionEn = lat !== null && lng !== null ? sql`UTC_TIMESTAMP()` : null;
+        const [r] = await tx.insert(alertas).values({ vecinoId: yo, lat, lng, ubicacionEn }).$returningId();
         await tx.execute(
             sql`INSERT INTO ${alertaRespuestas} (alerta_id, vecino_id) SELECT ${r!.id}, id FROM ${vecinos} WHERE activo = 1 AND id <> ${yo}`,
         );
@@ -126,6 +156,34 @@ rutasAlertas.post('/alertas/:id/resolver', async (req, res) => {
     res.json(await cerrar(a.id, 'resuelta'));
 });
 
+/**
+ * Ubicación en vivo (la app la manda cada vez que la persona se mueve ~15 m, con la pantalla de la
+ * alerta abierta). Quien la disparó actualiza la de la alerta; un vecino en camino, la suya.
+ */
+rutasAlertas.post('/alertas/:id/ubicacion', async (req, res) => {
+    const lat = validar.coordenada(req.body?.lat, 'lat', 90);
+    const lng = validar.coordenada(req.body?.lng, 'lng', 180);
+    if (lat === null || lng === null) throw invalido('Faltan lat y lng.');
+    const id = validar.id(req.params.id);
+    const [a] = await db.select({ vecinoId: alertas.vecinoId, estado: alertas.estado }).from(alertas).where(eq(alertas.id, id));
+    if (!a) throw noEncontrado('La alerta no existe.');
+    if (a.estado !== 'activa') throw conflicto('La alerta ya no está activa.');
+
+    const ubicacion = { lat, lng, ubicacionEn: sql`UTC_TIMESTAMP()` };
+    if (a.vecinoId === req.vecino.id) {
+        await db.update(alertas).set(ubicacion).where(eq(alertas.id, id));
+    } else {
+        const [r] = await db
+            .update(alertaRespuestas)
+            .set(ubicacion)
+            .where(and(eq(alertaRespuestas.alertaId, id), eq(alertaRespuestas.vecinoId, req.vecino.id), eq(alertaRespuestas.estado, 'en_camino')));
+        if (r.affectedRows === 0) {
+            throw new HttpError(403, 'Solo comparten ubicación quien disparó la alerta y los vecinos que van en camino.');
+        }
+    }
+    res.status(204).end();
+});
+
 /** Quien disparó la alerta le suma una foto (lo que está pasando) mientras sigue activa. */
 rutasAlertas.post('/alertas/:id/foto', async (req, res) => {
     const a = await alertaPorId(validar.id(req.params.id), req.vecino.id);
@@ -146,7 +204,7 @@ rutasAlertas.post('/alertas/:id/en-camino', async (req, res) => {
 
     await db
         .update(alertaRespuestas)
-        .set({ estado: enCamino ? 'en_camino' : 'notificado', actualizadoEn: sql`UTC_TIMESTAMP()` })
+        .set({ estado: enCamino ? 'en_camino' : 'notificado', actualizadoEn: sql`UTC_TIMESTAMP()`, ...(enCamino ? {} : sinUbicacion) })
         .where(and(eq(alertaRespuestas.alertaId, a.id), eq(alertaRespuestas.vecinoId, req.vecino.id)));
     res.json(await alertaPorId(a.id, req.vecino.id));
 });

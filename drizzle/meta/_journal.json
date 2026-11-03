@@ -15,6 +15,13 @@
       "when": 1793740028247,
       "tag": "0001_fotos_y_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1793742788712,
+      "tag": "0002_ubicacion_en_vivo",
+      "breakpoints": true
     }
   ]
 }
