@@ -362,12 +362,78 @@ describe('alertas', () => {
     });
 });
 
+describe('fotos y chat', () => {
+    // Alcanza con la firma de JPEG (FF D8 FF): la API mira los primeros bytes, no decodifica la imagen.
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0xff, 0xd9]);
+    const subir = (token: string, datos: Buffer, tipo = 'image/jpeg') =>
+        fetch(`${base}/api/v1/fotos`, { method: 'POST', headers: { 'Content-Type': tipo, Authorization: `Bearer ${token}` }, body: new Uint8Array(datos) });
+    let foto = 0; // subida por María
+
+    it('sube una foto y la devuelve tal cual; rechaza lo que no es imagen o es muy grande', async () => {
+        const r = await subir(maria, jpeg);
+        assert.equal(r.status, 201);
+        foto = (await r.json()).id;
+
+        const g = await fetch(`${base}/api/v1/fotos/${foto}`, { headers: { Authorization: `Bearer ${jorge}` } });
+        assert.equal(g.status, 200);
+        assert.equal(g.headers.get('content-type'), 'image/jpeg');
+        assert.deepEqual(Buffer.from(await g.arrayBuffer()), jpeg);
+
+        // Dice ser JPEG pero no lo es: cuentan los bytes, no el Content-Type.
+        assert.equal((await subir(maria, Buffer.from('<?php echo 1;'))).status, 400);
+        const grande = await subir(maria, Buffer.concat([jpeg, Buffer.alloc(4 * 1024 * 1024)]));
+        assert.equal(grande.status, 400);
+        assert.equal((await grande.json()).error.mensaje, 'El archivo es demasiado grande.');
+        assert.equal((await pedir('GET', '/api/v1/fotos/99999', { token: maria })).status, 404);
+    });
+
+    it('publicar con una foto propia; con una ajena → 403', async () => {
+        const r = await pedir('POST', '/api/v1/publicaciones', { token: maria, body: { tipo: 'actividad', titulo: 'Con foto', foto_id: foto } });
+        assert.equal(r.status, 201, JSON.stringify(r.body));
+        assert.equal(r.body.foto_id, foto);
+        const ajena = await pedir('POST', '/api/v1/publicaciones', { token: jorge, body: { tipo: 'actividad', titulo: 'Ajena', foto_id: foto } });
+        assert.equal(ajena.status, 403);
+    });
+
+    it('foto en la alerta: solo quien la disparó y mientras está activa', async () => {
+        const { body } = await pedir('POST', '/api/v1/alertas', { token: maria, body: {} });
+        assert.equal((await pedir('POST', `/api/v1/alertas/${body.id}/foto`, { token: jorge, body: { foto_id: foto } })).status, 403);
+        assert.equal((await pedir('POST', `/api/v1/alertas/${body.id}/foto`, { token: maria, body: {} })).status, 400);
+        const r = await pedir('POST', `/api/v1/alertas/${body.id}/foto`, { token: maria, body: { foto_id: foto } });
+        assert.equal(r.status, 200);
+        assert.equal(r.body.foto_id, foto);
+        assert.equal((await pedir('GET', `/api/v1/alertas/${body.id}`, { token: jorge })).body.foto_id, foto);
+
+        await pedir('POST', `/api/v1/alertas/${body.id}/cancelar`, { token: maria });
+        assert.equal((await pedir('POST', `/api/v1/alertas/${body.id}/foto`, { token: maria, body: { foto_id: foto } })).status, 409);
+    });
+
+    it('chat: texto o foto, y ?despues trae solo los nuevos', async () => {
+        const a = await pedir('POST', '/api/v1/mensajes', { token: jorge, body: { texto: 'Hola, vecinos' } });
+        assert.equal(a.status, 201);
+        assert.equal(a.body.texto, 'Hola, vecinos');
+        assert.equal(a.body.foto_id, null);
+        assert.equal(a.body.iniciales.length, 2);
+        const b = await pedir('POST', '/api/v1/mensajes', { token: maria, body: { foto_id: foto } });
+        assert.equal(b.status, 201);
+        assert.equal(b.body.texto, null);
+        assert.equal((await pedir('POST', '/api/v1/mensajes', { token: maria, body: {} })).status, 400);
+        assert.equal((await pedir('POST', '/api/v1/mensajes', { token: jorge, body: { foto_id: foto } })).status, 403);
+
+        const todos = await pedir('GET', '/api/v1/mensajes', { token: laura });
+        assert.deepEqual(todos.body.map((m: any) => m.id), [a.body.id, b.body.id]);
+        const nuevos = await pedir('GET', `/api/v1/mensajes?despues=${a.body.id}`, { token: laura });
+        assert.deepEqual(nuevos.body.map((m: any) => m.id), [b.body.id]);
+        assert.equal((await pedir('GET', '/api/v1/mensajes?despues=x', { token: laura })).status, 400);
+    });
+});
+
 describe('documentación', () => {
     it('cada ruta montada figura en docs/openapi.yaml (y viceversa)', async () => {
         const doc = parse(await readFile(new URL('../docs/openapi.yaml', import.meta.url), 'utf8'));
         const { rutasAuth } = await import('../src/routes/auth.ts');
         const otros = await Promise.all(
-            ['alertas', 'barrio', 'publicaciones', 'rondines', 'vecinos'].map((m) => import(`../src/routes/${m}.ts`)),
+            ['alertas', 'barrio', 'fotos', 'mensajes', 'publicaciones', 'rondines', 'vecinos'].map((m) => import(`../src/routes/${m}.ts`)),
         );
         const montadas = new Set<string>();
         const recorrer = (router: any, prefijo: string) => {

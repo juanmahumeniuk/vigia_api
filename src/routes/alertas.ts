@@ -5,8 +5,9 @@ import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
 import { requireComite } from '../auth.ts';
 import { db } from '../db/index.ts';
 import { alertaRespuestas, alertas, manzanas, vecinos } from '../db/schema.ts';
-import { conflicto, HttpError, noEncontrado } from '../errors.ts';
+import { conflicto, HttpError, invalido, noEncontrado } from '../errors.ts';
 import * as validar from '../validar.ts';
+import { fotoPropia } from './fotos.ts';
 
 export const rutasAlertas = Router();
 
@@ -24,6 +25,7 @@ async function buscarAlertas(where: SQL, vecinoId: number, limite: number) {
             miRespuesta: sql<EstadoRespuesta | null>`MAX(CASE WHEN ${alertaRespuestas.vecinoId} = ${vecinoId} THEN ${alertaRespuestas.estado} END)`,
             lat: alertas.lat,
             lng: alertas.lng,
+            fotoId: alertas.fotoId,
             creadaEn: alertas.creadaEn,
             cerradaEn: alertas.cerradaEn,
             autorId: vecinos.id,
@@ -49,6 +51,7 @@ async function buscarAlertas(where: SQL, vecinoId: number, limite: number) {
         mi_respuesta: a.miRespuesta,
         lat: a.lat,
         lng: a.lng,
+        foto_id: a.fotoId,
         creada_en: validar.iso(a.creadaEn),
         cerrada_en: validar.iso(a.cerradaEn),
         vecino: { id: a.autorId, nombre: `${a.autorNombre} ${a.autorApellido}`, manzana: a.manzana },
@@ -121,6 +124,17 @@ rutasAlertas.post('/alertas/:id/resolver', async (req, res) => {
         throw new HttpError(403, 'Solo quien disparó la alerta o el comité pueden resolverla.');
     }
     res.json(await cerrar(a.id, 'resuelta'));
+});
+
+/** Quien disparó la alerta le suma una foto (lo que está pasando) mientras sigue activa. */
+rutasAlertas.post('/alertas/:id/foto', async (req, res) => {
+    const a = await alertaPorId(validar.id(req.params.id), req.vecino.id);
+    if (a.vecino.id !== req.vecino.id) throw new HttpError(403, 'Solo quien disparó la alerta puede agregarle una foto.');
+    if (a.estado !== 'activa') throw conflicto('La alerta ya no está activa.');
+    const fotoId = await fotoPropia(req.body?.foto_id, req.vecino.id);
+    if (fotoId === null) throw invalido('Falta foto_id.');
+    await db.update(alertas).set({ fotoId }).where(eq(alertas.id, a.id));
+    res.json(await alertaPorId(a.id, req.vecino.id));
 });
 
 /** Un vecino avisado dice "voy en camino" (o se retracta con en_camino: false). */

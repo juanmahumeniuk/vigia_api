@@ -5,11 +5,12 @@ import { db } from '../db/index.ts';
 import { ETIQUETAS, publicaciones, publicacionRespuestas, TIPOS_PUBLICACION, vecinos } from '../db/schema.ts';
 import { errnoMysql, HttpError, invalido, noEncontrado } from '../errors.ts';
 import * as validar from '../validar.ts';
+import { fotoPropia } from './fotos.ts';
 
 export const rutasPublicaciones = Router();
 
 /** "María R." y "MR", como en la spec §4.3. */
-const autor = (v: { nombre: string; apellido: string }) => ({
+export const autor = (v: { nombre: string; apellido: string }) => ({
     autor: `${v.nombre} ${v.apellido.charAt(0)}.`,
     iniciales: `${v.nombre.charAt(0)}${v.apellido.charAt(0)}`.toUpperCase(),
 });
@@ -23,6 +24,7 @@ async function buscarPublicaciones(where: SQL | undefined, limite: number) {
             cuerpo: publicaciones.cuerpo,
             etiqueta: publicaciones.etiqueta,
             firma: publicaciones.firma,
+            fotoId: publicaciones.fotoId,
             autorId: publicaciones.autorId,
             nombre: vecinos.nombre,
             apellido: vecinos.apellido,
@@ -43,6 +45,7 @@ async function buscarPublicaciones(where: SQL | undefined, limite: number) {
             titulo: p.titulo,
             cuerpo: p.cuerpo,
             etiqueta: p.etiqueta,
+            foto_id: p.fotoId,
             autor: p.firma ?? a.autor,
             iniciales: a.iniciales,
             autor_id: p.autorId,
@@ -80,6 +83,7 @@ rutasPublicaciones.post('/publicaciones', async (req, res) => {
     }
     if (tipo === 'actividad' && etiqueta) throw invalido('Las actividades no llevan etiqueta.');
     if (tipo === 'noticia' && !etiqueta) throw invalido('Las noticias llevan etiqueta.');
+    const fotoId = await fotoPropia(b.foto_id, req.vecino.id);
 
     const [r] = await db
         .insert(publicaciones)
@@ -90,6 +94,7 @@ rutasPublicaciones.post('/publicaciones', async (req, res) => {
             firma,
             titulo: validar.texto(b.titulo, 'titulo', 140),
             cuerpo: validar.textoOpcional(b.cuerpo, 'cuerpo', 5000),
+            fotoId,
         })
         .$returningId();
     res.status(201).json(await publicacionPorId(r!.id));

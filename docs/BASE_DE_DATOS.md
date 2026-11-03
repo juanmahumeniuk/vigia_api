@@ -41,6 +41,9 @@ manzanas 1───* vecinos 1───* sesiones
 | `publicaciones` | `CHECK ((tipo = 'noticia') = (etiqueta IS NOT NULL))` | Una noticia siempre lleva etiqueta y una actividad nunca (`NewsItem.fromJson` la lee como `String` no nulo) |
 | `publicacion_respuestas` | Tabla nueva | Las respuestas que cuenta el feed |
 | `alertas`, `alerta_respuestas` | Sin cambios de estructura | Ahora tienen endpoints para `en_camino`, `central_911_confirmada` y `resuelta` |
+| `fotos` | Tabla nueva (`vecino_id`, `mime`, `datos MEDIUMBLOB`) | Fotos de publicaciones, mensajes y alertas. Van en la base porque el disco de la Node.js Web App de Hostinger se pisa en cada deploy |
+| `publicaciones`, `alertas` | Se agrega `foto_id` NULL (FK a `fotos`, `ON DELETE SET NULL`) | Una foto opcional por publicación o alerta |
+| `mensajes` | Tabla nueva (`autor_id`, `texto` NULL, `foto_id` NULL) | Chat general del barrio. Texto o foto: lo valida la API, porque MySQL no deja un `CHECK` sobre una columna con `ON DELETE SET NULL` |
 
 Las demás tablas, índices y claves foráneas son los de la especificación.
 
@@ -56,6 +59,7 @@ Las demás tablas, índices y claves foráneas son los de la especificación.
 
 - `POST /alertas` crea la alerta y las filas de `alerta_respuestas` en una sola transacción, bloqueando la fila del vecino con `SELECT … FOR UPDATE`. Así dos toques seguidos del SOS no crean dos alertas activas.
 - Canjear un enlace de `tokens_clave` bloquea la fila con `FOR UPDATE`, así un mismo enlace no se usa dos veces aunque lleguen dos pedidos a la vez.
+- Una foto solo se puede asociar (`foto_id`) por el vecino que la subió, y su tipo se verifica por los primeros bytes del archivo (JPEG, PNG o WEBP).
 - Los cambios de estado de una alerta (`cancelar`, `resolver`) usan `UPDATE … WHERE estado = 'activa'`. Si no afecta ninguna fila, responden 409.
 
 ## Operación

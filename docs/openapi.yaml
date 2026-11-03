@@ -1,12 +1,12 @@
 openapi: 3.1.0
 info:
   title: VigiaApp API
-  version: 1.1.0
+  version: 1.2.0
   description: |
     API REST de VigiaApp. Parte de la especificación v1.0 (`VigiaApp/docs/especificacion_api_db.md`);
     las diferencias con esa versión están en `docs/CAMBIOS_CLIENTE.md`.
 
-    - Todas las respuestas son `application/json; charset=utf-8` (RNF-04).
+    - Todas las respuestas son `application/json; charset=utf-8` (RNF-04), salvo `GET /fotos/{id}`, que devuelve la imagen.
     - Claves en `snake_case`; los booleanos viajan como `true`/`false` (RNF-07).
     - Fechas con hora: ISO-8601 en UTC con `Z` y sin milisegundos (`2026-09-23T18:35:00Z`).
       Fechas de calendario: `AAAA-MM-DD`. Horas: `HH:MM`.
@@ -30,6 +30,8 @@ tags:
   - name: Publicaciones
   - name: Rondines
   - name: Alertas
+  - name: Fotos
+  - name: Chat
   - name: Salud
 
 paths:
@@ -300,7 +302,7 @@ paths:
             application/json:
               schema: { type: array, items: { $ref: '#/components/schemas/Publicacion' } }
               example:
-                - { id: 1, tipo: actividad, titulo: Cierre de la calle Juárez por obra, etiqueta: null, autor: Jorge L., iniciales: JL, autor_id: 3, creado_en: '2026-09-23T18:35:00Z', respuestas: 0 }
+                - { id: 1, tipo: actividad, titulo: Cierre de la calle Juárez por obra, etiqueta: null, foto_id: null, autor: Jorge L., iniciales: JL, autor_id: 3, creado_en: '2026-09-23T18:35:00Z', respuestas: 0 }
         '400': { $ref: '#/components/responses/DatosInvalidos' }
         '401': { $ref: '#/components/responses/NoAutorizado' }
     post:
@@ -320,6 +322,7 @@ paths:
                 cuerpo: { type: [string, 'null'], maxLength: 5000 }
                 etiqueta: { oneOf: [{ $ref: '#/components/schemas/Etiqueta' }, { type: 'null' }] }
                 firma: { type: [string, 'null'], maxLength: 40, description: 'p. ej. "Comité", "Municipio"' }
+                foto_id: { type: [integer, 'null'], description: Una foto subida por el mismo vecino con `POST /fotos` (si no, 403). }
       responses:
         '201':
           description: Creada
@@ -327,6 +330,7 @@ paths:
         '400': { $ref: '#/components/responses/DatosInvalidos' }
         '401': { $ref: '#/components/responses/NoAutorizado' }
         '403': { $ref: '#/components/responses/Prohibido' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
 
   /publicaciones/{id}:
     get:
@@ -589,6 +593,31 @@ paths:
         '404': { $ref: '#/components/responses/NoEncontrado' }
         '409': { $ref: '#/components/responses/Conflicto' }
 
+  /alertas/{id}/foto:
+    post:
+      tags: [Alertas, Fotos]
+      summary: Agregarle una foto a la alerta
+      description: Solo quien la disparó (si no, 403) y solo si sigue activa (409). Reemplaza la foto anterior.
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [foto_id]
+              properties:
+                foto_id: { type: integer, description: Subida por el mismo vecino con `POST /fotos`. }
+      responses:
+        '200':
+          description: Estado de la alerta con `foto_id`
+          content: { application/json: { schema: { $ref: '#/components/schemas/EstadoAlerta' } } }
+        '400': { $ref: '#/components/responses/DatosInvalidos' }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '403': { $ref: '#/components/responses/Prohibido' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '409': { $ref: '#/components/responses/Conflicto' }
+
   /alertas/{id}/en-camino:
     post:
       tags: [Alertas]
@@ -627,6 +656,87 @@ paths:
         '403': { $ref: '#/components/responses/Prohibido' }
         '404': { $ref: '#/components/responses/NoEncontrado' }
         '409': { $ref: '#/components/responses/Conflicto' }
+
+  # ---------------------------------------------------------------- Fotos
+  /fotos:
+    post:
+      tags: [Fotos]
+      summary: Subir una foto
+      description: |
+        El cuerpo son los bytes de la imagen, con su `Content-Type` (`image/jpeg`, `image/png` o `image/webp`), hasta 3 MB.
+        El tipo se verifica por los primeros bytes del archivo. Después se asocia con `foto_id` a una
+        publicación, un mensaje o una alerta.
+      requestBody:
+        required: true
+        content:
+          image/jpeg: { schema: { type: string, format: binary } }
+          image/png: { schema: { type: string, format: binary } }
+          image/webp: { schema: { type: string, format: binary } }
+      responses:
+        '201':
+          description: Subida
+          content:
+            application/json:
+              schema: { type: object, required: [id], properties: { id: { type: integer } } }
+              example: { id: 5 }
+        '400': { $ref: '#/components/responses/DatosInvalidos' }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+
+  /fotos/{id}:
+    get:
+      tags: [Fotos]
+      summary: Bajar una foto
+      description: 'Devuelve la imagen con su `Content-Type` y `Cache-Control: private, max-age=86400`.'
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200':
+          description: La imagen
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+
+  # ---------------------------------------------------------------- Chat
+  /mensajes:
+    get:
+      tags: [Chat]
+      summary: Chat del barrio
+      description: |
+        Sin `despues`: los últimos 50. Con `despues`: hasta 50 con id mayor (polling, sugerido cada 10 s).
+        Siempre del más viejo al más nuevo.
+      parameters:
+        - { name: despues, in: query, required: false, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200':
+          description: Mensajes
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Mensaje' } }
+        '400': { $ref: '#/components/responses/DatosInvalidos' }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+    post:
+      tags: [Chat]
+      summary: Mandar un mensaje
+      description: Texto, foto o las dos (sin ninguna → 400).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                texto: { type: [string, 'null'], maxLength: 500 }
+                foto_id: { type: [integer, 'null'], description: Subida por el mismo vecino con `POST /fotos` (si no, 403). }
+      responses:
+        '201':
+          description: Mensaje creado
+          content: { application/json: { schema: { $ref: '#/components/schemas/Mensaje' } } }
+        '400': { $ref: '#/components/responses/DatosInvalidos' }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '403': { $ref: '#/components/responses/Prohibido' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
 
   # ---------------------------------------------------------------- Salud (fuera de /api/v1)
   /health:
@@ -787,12 +897,13 @@ components:
     Publicacion:
       type: object
       description: Sirve a `ActivityItem.fromJson` y a `NewsItem.fromJson` (campos extra se ignoran).
-      required: [id, tipo, titulo, etiqueta, autor, iniciales, autor_id, creado_en, respuestas]
+      required: [id, tipo, titulo, etiqueta, foto_id, autor, iniciales, autor_id, creado_en, respuestas]
       properties:
         id: { type: integer }
         tipo: { $ref: '#/components/schemas/TipoPublicacion' }
         titulo: { type: string }
         etiqueta: { oneOf: [{ $ref: '#/components/schemas/Etiqueta' }, { type: 'null' }] }
+        foto_id: { type: [integer, 'null'], description: 'Se baja con `GET /fotos/{id}`' }
         autor: { type: string, example: Jorge L., description: 'La `firma` ("Comité") o "Nombre I."' }
         iniciales: { type: string, example: JL }
         autor_id: { type: integer, description: Para saber si el vecino puede borrarla }
@@ -813,6 +924,18 @@ components:
       properties:
         id: { type: integer }
         texto: { type: string }
+        autor: { type: string, example: María R. }
+        iniciales: { type: string, example: MR }
+        autor_id: { type: integer }
+        creado_en: { type: string, format: date-time }
+
+    Mensaje:
+      type: object
+      required: [id, texto, foto_id, autor, iniciales, autor_id, creado_en]
+      properties:
+        id: { type: integer }
+        texto: { type: [string, 'null'] }
+        foto_id: { type: [integer, 'null'] }
         autor: { type: string, example: María R. }
         iniciales: { type: string, example: MR }
         autor_id: { type: integer }
@@ -855,7 +978,7 @@ components:
       description: |
         Los cinco primeros campos son los que ya lee `EstadoAlerta.fromJson` (lib/models/alerta.dart);
         el resto es nuevo en v1.1.
-      required: [id, estado, central_911_confirmada, vecinos_avisados, en_camino, mi_respuesta, lat, lng, creada_en, cerrada_en, vecino]
+      required: [id, estado, central_911_confirmada, vecinos_avisados, en_camino, mi_respuesta, lat, lng, foto_id, creada_en, cerrada_en, vecino]
       properties:
         id: { type: integer, example: 17 }
         estado: { type: string, enum: [activa, cancelada, resuelta] }
@@ -868,6 +991,7 @@ components:
           description: null si quien consulta no fue avisado (p. ej. es quien la disparó)
         lat: { type: [number, 'null'] }
         lng: { type: [number, 'null'] }
+        foto_id: { type: [integer, 'null'], description: 'La agrega quien la disparó con `POST /alertas/{id}/foto`' }
         creada_en: { type: string, format: date-time }
         cerrada_en: { type: [string, 'null'], format: date-time }
         vecino:
