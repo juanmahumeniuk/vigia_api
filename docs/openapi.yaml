@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: VigiaApp API
-  version: 1.2.0
+  version: 1.3.0
   description: |
     API REST de VigiaApp. Parte de la especificación v1.0 (`VigiaApp/docs/especificacion_api_db.md`);
     las diferencias con esa versión están en `docs/CAMBIOS_CLIENTE.md`.
@@ -593,6 +593,34 @@ paths:
         '404': { $ref: '#/components/responses/NoEncontrado' }
         '409': { $ref: '#/components/responses/Conflicto' }
 
+  /alertas/{id}/ubicacion:
+    post:
+      tags: [Alertas]
+      summary: Compartir la ubicación en vivo
+      description: |
+        La app la manda mientras la pantalla de la alerta está abierta, cada vez que la persona se mueve.
+        Quien disparó la alerta actualiza la de la alerta (`lat`, `lng`, `ubicacion_en`); un vecino en camino,
+        la suya (aparece en `en_camino_ubicaciones`). Cualquier otro → 403. La alerta tiene que estar activa (409).
+        Las ubicaciones de los vecinos se borran con "ya no voy" y al cerrar la alerta.
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lat, lng]
+              properties:
+                lat: { type: number, minimum: -90, maximum: 90 }
+                lng: { type: number, minimum: -180, maximum: 180 }
+      responses:
+        '204': { description: 'Guardada. El estado nuevo llega con `GET /alertas/{id}`.' }
+        '400': { $ref: '#/components/responses/DatosInvalidos' }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+        '403': { $ref: '#/components/responses/Prohibido' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '409': { $ref: '#/components/responses/Conflicto' }
+
   /alertas/{id}/foto:
     post:
       tags: [Alertas, Fotos]
@@ -978,7 +1006,7 @@ components:
       description: |
         Los cinco primeros campos son los que ya lee `EstadoAlerta.fromJson` (lib/models/alerta.dart);
         el resto es nuevo en v1.1.
-      required: [id, estado, central_911_confirmada, vecinos_avisados, en_camino, mi_respuesta, lat, lng, foto_id, creada_en, cerrada_en, vecino]
+      required: [id, estado, central_911_confirmada, vecinos_avisados, en_camino, mi_respuesta, lat, lng, ubicacion_en, foto_id, creada_en, cerrada_en, vecino]
       properties:
         id: { type: integer, example: 17 }
         estado: { type: string, enum: [activa, cancelada, resuelta] }
@@ -989,8 +1017,21 @@ components:
           type: [string, 'null']
           enum: [notificado, en_camino, null]
           description: null si quien consulta no fue avisado (p. ej. es quien la disparó)
-        lat: { type: [number, 'null'] }
+        lat: { type: [number, 'null'], description: Última ubicación de quien la disparó }
         lng: { type: [number, 'null'] }
+        ubicacion_en: { type: [string, 'null'], format: date-time, description: Cuándo llegó esa ubicación }
+        en_camino_ubicaciones:
+          type: array
+          description: 'Solo en el detalle (`GET /alertas/{id}` y las acciones), no en el listado. Vecinos en camino que comparten su ubicación.'
+          items:
+            type: object
+            required: [vecino_id, nombre, lat, lng, actualizado_en]
+            properties:
+              vecino_id: { type: integer }
+              nombre: { type: string, example: Jorge López }
+              lat: { type: number }
+              lng: { type: number }
+              actualizado_en: { type: string, format: date-time }
         foto_id: { type: [integer, 'null'], description: 'La agrega quien la disparó con `POST /alertas/{id}/foto`' }
         creada_en: { type: string, format: date-time }
         cerrada_en: { type: [string, 'null'], format: date-time }
