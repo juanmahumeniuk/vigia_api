@@ -6,6 +6,7 @@ import {
     boolean,
     char,
     check,
+    customType,
     date,
     datetime,
     decimal,
@@ -19,6 +20,7 @@ import {
     time,
     uniqueIndex,
     varchar,
+    type AnyMySqlColumn,
 } from 'drizzle-orm/mysql-core';
 
 const ahora = sql`CURRENT_TIMESTAMP`;
@@ -28,6 +30,9 @@ const fk = (columna: string) => int(columna, { unsigned: true }).notNull();
 export const ROLES = ['vecino', 'vigia', 'comite'] as const;
 export const ETIQUETAS = ['obras', 'seguridad', 'alumbrado', 'convivencia'] as const;
 export const TIPOS_PUBLICACION = ['actividad', 'noticia'] as const;
+
+/** Hasta 16 MB. La app manda fotos de ~200 KB (image_picker con maxWidth 1280 y calidad 70). */
+const mediumblob = customType<{ data: Buffer }>({ dataType: () => 'mediumblob' });
 
 export const manzanas = mysqlTable('manzanas', {
     id: id(),
@@ -57,6 +62,24 @@ export const vecinos = mysqlTable(
         foreignKey({ name: 'fk_vecinos_manzana', columns: [t.manzanaId], foreignColumns: [manzanas.id] }).onDelete('restrict'),
     ],
 );
+
+// Fotos de publicaciones, mensajes y alertas. En la base y no en disco: el disco de la Node.js
+// Web App de Hostinger se pisa en cada deploy.
+export const fotos = mysqlTable(
+    'fotos',
+    {
+        id: id(),
+        vecinoId: fk('vecino_id'), // quien la subió: solo él puede asociarla
+        mime: varchar('mime', { length: 20 }).notNull(),
+        datos: mediumblob('datos').notNull(),
+        creadoEn: datetime('creado_en').notNull().default(ahora),
+    },
+    (t) => [foreignKey({ name: 'fk_fotos_vecino', columns: [t.vecinoId], foreignColumns: [vecinos.id] }).onDelete('cascade')],
+);
+
+const fotoId = () => int('foto_id', { unsigned: true });
+const fkFoto = (nombre: string, columna: AnyMySqlColumn) =>
+    foreignKey({ name: nombre, columns: [columna], foreignColumns: [fotos.id] }).onDelete('set null');
 
 // Reemplaza a codigos_otp de la spec: enlace de un solo uso para elegir contraseña.
 export const tokensClave = mysqlTable(
@@ -97,9 +120,11 @@ export const publicaciones = mysqlTable(
         etiqueta: mysqlEnum('etiqueta', ETIQUETAS), // obligatoria en noticias, NULL en actividad
         titulo: varchar('titulo', { length: 140 }).notNull(),
         cuerpo: text('cuerpo'),
+        fotoId: fotoId(),
         creadoEn: datetime('creado_en').notNull().default(ahora),
     },
     (t) => [
+        fkFoto('fk_publicaciones_foto', t.fotoId),
         index('idx_publicaciones_tipo_fecha').on(t.tipo, t.creadoEn),
         // Noticia ⇔ tiene etiqueta (NewsItem.fromJson la lee como String no nulo).
         check('chk_publicaciones_etiqueta', sql`(tipo = 'noticia') = (etiqueta IS NOT NULL)`),
@@ -160,11 +185,13 @@ export const alertas = mysqlTable(
         lng: decimal('lng', { precision: 9, scale: 6, mode: 'number' }),
         estado: mysqlEnum('estado', ['activa', 'cancelada', 'resuelta']).notNull().default('activa'),
         central911Confirmada: boolean('central_911_confirmada').notNull().default(false),
+        fotoId: fotoId(),
         creadaEn: datetime('creada_en').notNull().default(ahora),
         cerradaEn: datetime('cerrada_en'),
     },
     (t) => [
         index('idx_alertas_estado_fecha').on(t.estado, t.creadaEn),
+        fkFoto('fk_alertas_foto', t.fotoId),
         foreignKey({ name: 'fk_alertas_vecino', columns: [t.vecinoId], foreignColumns: [vecinos.id] }).onDelete('restrict'),
     ],
 );
@@ -182,5 +209,22 @@ export const alertaRespuestas = mysqlTable(
         index('idx_respuestas_vecino').on(t.vecinoId),
         foreignKey({ name: 'fk_respuestas_alerta', columns: [t.alertaId], foreignColumns: [alertas.id] }).onDelete('cascade'),
         foreignKey({ name: 'fk_respuestas_vecino', columns: [t.vecinoId], foreignColumns: [vecinos.id] }).onDelete('cascade'),
+    ],
+);
+
+// Chat general del barrio (en el Inicio de la app). Texto, foto o las dos: lo valida la ruta, porque
+// MySQL no deja un CHECK sobre foto_id si la FK lo pone en NULL (error 3823).
+export const mensajes = mysqlTable(
+    'mensajes',
+    {
+        id: id(),
+        autorId: fk('autor_id'),
+        texto: varchar('texto', { length: 500 }),
+        fotoId: fotoId(),
+        creadoEn: datetime('creado_en').notNull().default(ahora),
+    },
+    (t) => [
+        foreignKey({ name: 'fk_mensajes_autor', columns: [t.autorId], foreignColumns: [vecinos.id] }).onDelete('cascade'),
+        fkFoto('fk_mensajes_foto', t.fotoId),
     ],
 );

@@ -8,6 +8,8 @@ import { manejarError, rutaInexistente } from './errors.ts';
 import { rutasAlertas } from './routes/alertas.ts';
 import { rutasAuth } from './routes/auth.ts';
 import { rutasBarrio } from './routes/barrio.ts';
+import { rutasFotos } from './routes/fotos.ts';
+import { rutasMensajes } from './routes/mensajes.ts';
 import { rutasPublicaciones } from './routes/publicaciones.ts';
 import { rutasRondines } from './routes/rondines.ts';
 import { rutasVecinos } from './routes/vecinos.ts';
@@ -58,7 +60,7 @@ app.get('/clave', (req, res) => {
 const api = express.Router();
 api.use('/auth', rutasAuth);
 api.use(requireAuth); // todo lo que sigue exige Authorization: Bearer <token>
-api.use(rutasVecinos, rutasBarrio, rutasPublicaciones, rutasRondines, rutasAlertas);
+api.use(rutasVecinos, rutasBarrio, rutasPublicaciones, rutasRondines, rutasAlertas, rutasFotos, rutasMensajes);
 app.use('/api/v1', api);
 
 app.use(rutaInexistente);

@@ -42,7 +42,8 @@ export const manejarError: ErrorRequestHandler = (err, req, res, _next) => {
     }
     const status = typeof err?.status === 'number' ? err.status : 500;
     if (status >= 400 && status < 500) {
-        return enviarError(res, 400, 'El cuerpo de la petición no es JSON válido.');
+        const mensaje = err?.type === 'entity.too.large' ? 'El archivo es demasiado grande.' : 'El cuerpo de la petición no es JSON válido.';
+        return enviarError(res, 400, mensaje);
     }
     const causa = err?.cause ?? err;
     console.error(`[error] ${req.method} ${req.path}`, { code: causa?.code, errno: causa?.errno, message: causa?.sqlMessage ?? causa?.message });
