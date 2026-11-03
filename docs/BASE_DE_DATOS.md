@@ -44,6 +44,7 @@ manzanas 1───* vecinos 1───* sesiones
 | `fotos` | Tabla nueva (`vecino_id`, `mime`, `datos MEDIUMBLOB`) | Fotos de publicaciones, mensajes y alertas. Van en la base porque el disco de la Node.js Web App de Hostinger se pisa en cada deploy |
 | `publicaciones`, `alertas` | Se agrega `foto_id` NULL (FK a `fotos`, `ON DELETE SET NULL`) | Una foto opcional por publicación o alerta |
 | `mensajes` | Tabla nueva (`autor_id`, `texto` NULL, `foto_id` NULL) | Chat general del barrio. Texto o foto: lo valida la API, porque MySQL no deja un `CHECK` sobre una columna con `ON DELETE SET NULL` |
+| `alertas`, `alerta_respuestas` | Se agregan `ubicacion_en` (y `lat`/`lng` en `alerta_respuestas`) | Ubicación en vivo de quien disparó la alerta y de cada vecino en camino. La de los vecinos se borra con "ya no voy" y al cerrar la alerta |
 
 Las demás tablas, índices y claves foráneas son los de la especificación.
 
