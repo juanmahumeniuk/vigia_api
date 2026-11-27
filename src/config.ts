@@ -16,6 +16,8 @@ if (esProduccion && !smtpHost) {
     throw new Error('Falta SMTP_HOST: en producción las invitaciones tienen que salir por correo.');
 }
 
+const firebaseProjectId = process.env.FIREBASE_PROJECT_ID?.trim() || null;
+
 const puerto = Number(process.env.PORT) || 3000;
 
 export const config = {
@@ -35,6 +37,13 @@ export const config = {
               user: process.env.SMTP_USER?.trim() ?? '',
               pass: process.env.SMTP_PASS ?? '',
               from: requerida('SMTP_FROM'),
+          }
+        : null,
+    firebase: firebaseProjectId
+        ? {
+              projectId: firebaseProjectId,
+              clientEmail: requerida('FIREBASE_CLIENT_EMAIL'),
+              privateKey: requerida('FIREBASE_PRIVATE_KEY').replace(/\\n/g, '\n'),
           }
         : null,
 };

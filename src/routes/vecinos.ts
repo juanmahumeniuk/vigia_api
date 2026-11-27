@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import { enviarEnlaceClave, requireComite } from '../auth.ts';
 import { db } from '../db/index.ts';
-import { manzanas, ROLES, sesiones, vecinos } from '../db/schema.ts';
+import { dispositivosPush, manzanas, PLATAFORMAS_PUSH, ROLES, sesiones, vecinos } from '../db/schema.ts';
 import { conflicto, errnoMysql, invalido, noEncontrado } from '../errors.ts';
 import { hashPassword, verifyPassword } from '../password.ts';
 import * as validar from '../validar.ts';
@@ -64,6 +64,27 @@ rutasVecinos.post('/yo/clave', async (req, res) => {
     await db.update(vecinos).set({ passwordHash: await hashPassword(nueva) }).where(eq(vecinos.id, req.vecino.id));
     // Cierra las otras sesiones; la del pedido sigue viva.
     await db.delete(sesiones).where(and(eq(sesiones.vecinoId, req.vecino.id), ne(sesiones.tokenHash, req.vecino.tokenHash)));
+    res.status(204).end();
+});
+
+/** Registra o actualiza el token FCM de este dispositivo para recibir alertas SOS. */
+rutasVecinos.put('/yo/dispositivo', async (req, res) => {
+    const token = validar.texto(req.body?.token, 'token', 255);
+    const plataforma =
+        req.body?.plataforma === undefined ? ('android' as const) : validar.unoDe(req.body.plataforma, PLATAFORMAS_PUSH, 'plataforma');
+    await db
+        .insert(dispositivosPush)
+        .values({ token, vecinoId: req.vecino.id, plataforma, actualizadoEn: sql`UTC_TIMESTAMP()` })
+        .onDuplicateKeyUpdate({
+            set: { vecinoId: req.vecino.id, plataforma, actualizadoEn: sql`UTC_TIMESTAMP()` },
+        });
+    res.status(204).end();
+});
+
+/** Desvincula el token FCM al cerrar sesión para no avisar en un celular que ya no es de este vecino. */
+rutasVecinos.delete('/yo/dispositivo', async (req, res) => {
+    const token = validar.texto(req.body?.token, 'token', 255);
+    await db.delete(dispositivosPush).where(and(eq(dispositivosPush.token, token), eq(dispositivosPush.vecinoId, req.vecino.id)));
     res.status(204).end();
 });
 

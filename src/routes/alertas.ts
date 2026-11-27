@@ -1,11 +1,12 @@
 // Alertas SOS: disparo (RF-01), triple confirmación (RF-02), cancelación (RF-03) y el resto del
 // ciclo que la spec dejaba abierto: alertas activas del barrio, "voy en camino", 911 y resolver.
 import { Router } from 'express';
-import { and, desc, eq, isNotNull, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, ne, sql, type SQL } from 'drizzle-orm';
 import { requireComite } from '../auth.ts';
 import { db } from '../db/index.ts';
-import { alertaRespuestas, alertas, manzanas, vecinos } from '../db/schema.ts';
+import { alertaRespuestas, alertas, dispositivosPush, manzanas, vecinos } from '../db/schema.ts';
 import { conflicto, HttpError, invalido, noEncontrado } from '../errors.ts';
+import { enviarPushSinEsperar } from '../push.ts';
 import * as validar from '../validar.ts';
 import { fotoPropia } from './fotos.ts';
 
@@ -126,6 +127,33 @@ rutasAlertas.post('/alertas', async (req, res) => {
         );
         return { id: r!.id, nueva: true };
     });
+    if (nueva) {
+        // Notificación push a los demás vecinos activos (no bloquea la respuesta del SOS).
+        void (async () => {
+            const [[autor], dispositivos] = await Promise.all([
+                db
+                    .select({ nombre: vecinos.nombre, apellido: vecinos.apellido, manzana: manzanas.nombre })
+                    .from(vecinos)
+                    .innerJoin(manzanas, eq(manzanas.id, vecinos.manzanaId))
+                    .where(eq(vecinos.id, yo))
+                    .limit(1),
+                db
+                    .select({ token: dispositivosPush.token })
+                    .from(dispositivosPush)
+                    .innerJoin(vecinos, eq(vecinos.id, dispositivosPush.vecinoId))
+                    .where(and(eq(vecinos.activo, true), ne(vecinos.id, yo))),
+            ]);
+            if (autor && dispositivos.length > 0) {
+                enviarPushSinEsperar({
+                    alertaId: id,
+                    vecinoNombre: `${autor.nombre} ${autor.apellido}`,
+                    manzana: autor.manzana,
+                    tokens: dispositivos.map((d) => d.token),
+                });
+            }
+        })().catch((e) => console.error('[push] error preparando envío:', e?.message));
+    }
+
     // Si ya tenía una activa se devuelve esa (200) y no se vuelve a avisar a todo el barrio.
     res.status(nueva ? 201 : 200).json({ id, estado: 'activa' });
 });
