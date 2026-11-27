@@ -12,6 +12,7 @@ if (!urlTest) throw new Error('Definí TEST_DATABASE_URL (ver .env.example).');
 process.env.DATABASE_URL = urlTest;
 process.env.NODE_ENV = 'test';
 process.env.SMTP_HOST = '';
+process.env.FIREBASE_PROJECT_ID = '';
 process.env.AUTH_RATE_LIMIT_MAX = '1000';
 
 // Base limpia antes de importar la app (el pool se crea al importar src/db).
@@ -27,6 +28,7 @@ const { app } = await import('../src/app.ts');
 const { pool } = await import('../src/db/index.ts');
 const { migrar } = await import('../src/migrate.ts');
 const { bandeja } = await import('../src/mail.ts');
+const { bandejaPush } = await import('../src/push.ts');
 const { lunesDeEstaSemana } = await import('../src/routes/rondines.ts');
 const { sembrar, PASSWORD_SEED } = await import('../scripts/seed.ts');
 
@@ -462,6 +464,59 @@ describe('ubicación en vivo', () => {
         await pedir('POST', `/api/v1/alertas/${id}/resolver`, { token: tomas });
         assert.deepEqual((await detalle()).en_camino_ubicaciones, []);
         assert.equal((await ubicar(tomas, -34.6, -58.4)).status, 409);
+    });
+});
+
+describe('notificaciones push (FCM)', () => {
+    it('registra/reasigna/borra tokens de dispositivo y avisa solo a otros vecinos activos en alertas nuevas', async () => {
+        const esperarPush = async (desde: number) => {
+            for (let i = 0; i < 100 && bandejaPush.length <= desde; i++) {
+                await new Promise((r) => setTimeout(r, 20));
+            }
+        };
+
+        assert.equal((await pedir('PUT', '/api/v1/yo/dispositivo', { token: maria, body: {} })).status, 400);
+        assert.equal(
+            (await pedir('PUT', '/api/v1/yo/dispositivo', { token: maria, body: { token: 'tok-maria', plataforma: 'windows' } })).status,
+            400,
+        );
+        assert.equal((await pedir('PUT', '/api/v1/yo/dispositivo', { token: maria, body: { token: 'tok-maria' } })).status, 204);
+        assert.equal((await pedir('PUT', '/api/v1/yo/dispositivo', { token: laura, body: { token: 'tok-laura', plataforma: 'android' } })).status, 204);
+        // Mismo celular cambia de usuario: el token se reasigna de Tomás a Jorge.
+        assert.equal((await pedir('PUT', '/api/v1/yo/dispositivo', { token: tomas, body: { token: 'tok-compartido' } })).status, 204);
+        assert.equal((await pedir('PUT', '/api/v1/yo/dispositivo', { token: jorge, body: { token: 'tok-compartido' } })).status, 204);
+
+        const antes = bandejaPush.length;
+        const creada = await pedir('POST', '/api/v1/alertas', { token: maria, body: {} });
+        assert.equal(creada.status, 201);
+        await esperarPush(antes);
+
+        assert.equal(bandejaPush.length, antes + 1);
+        const aviso = bandejaPush.at(-1)!;
+        assert.equal(aviso.alertaId, creada.body.id);
+        assert.match(aviso.vecinoNombre, /^María /);
+        // Incluye Laura y Jorge (token reasignado), excluye a María (quien disparó).
+        assert.deepEqual([...aviso.tokens].sort(), ['tok-compartido', 'tok-laura']);
+
+        // Segundo disparo idempotente (200): no vuelve a enviar push.
+        const repetida = await pedir('POST', '/api/v1/alertas', { token: maria, body: {} });
+        assert.equal(repetida.status, 200);
+        await new Promise((r) => setTimeout(r, 60));
+        assert.equal(bandejaPush.length, antes + 1);
+
+        await pedir('POST', `/api/v1/alertas/${creada.body.id}/cancelar`, { token: maria });
+
+        // Laura cierra sesión y desvincula su dispositivo: ya no recibe la próxima alerta.
+        assert.equal((await pedir('DELETE', '/api/v1/yo/dispositivo', { token: laura, body: { token: 'tok-laura' } })).status, 204);
+        const antes2 = bandejaPush.length;
+        const creada2 = await pedir('POST', '/api/v1/alertas', { token: maria, body: {} });
+        assert.equal(creada2.status, 201);
+        await esperarPush(antes2);
+        assert.deepEqual(bandejaPush.at(-1)!.tokens, ['tok-compartido']);
+
+        await pedir('POST', `/api/v1/alertas/${creada2.body.id}/cancelar`, { token: maria });
+        await pedir('DELETE', '/api/v1/yo/dispositivo', { token: maria, body: { token: 'tok-maria' } });
+        await pedir('DELETE', '/api/v1/yo/dispositivo', { token: jorge, body: { token: 'tok-compartido' } });
     });
 });
 

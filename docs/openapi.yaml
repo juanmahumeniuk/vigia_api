@@ -146,6 +146,43 @@ paths:
         '400': { $ref: '#/components/responses/DatosInvalidos' }
         '401': { $ref: '#/components/responses/NoAutorizado' }
 
+  /yo/dispositivo:
+    put:
+      tags: [Perfil]
+      summary: Registrar o actualizar el token FCM de este dispositivo
+      description: Asocia el token FCM al vecino actual para recibir notificaciones push de alertas SOS con la app cerrada. Si el token pertenecía a otro vecino (mismo celular), lo reasigna.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string, minLength: 1, maxLength: 255 }
+                plataforma: { type: string, enum: [android, ios], default: android }
+      responses:
+        '204': { description: Dispositivo registrado. }
+        '400': { $ref: '#/components/responses/DatosInvalidos' }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+    delete:
+      tags: [Perfil]
+      summary: Desvincular el token FCM de este dispositivo
+      description: Se llama al cerrar sesión para dejar de recibir alertas SOS en este celular.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string, minLength: 1, maxLength: 255 }
+      responses:
+        '204': { description: Dispositivo desvinculado. }
+        '400': { $ref: '#/components/responses/DatosInvalidos' }
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+
   # ---------------------------------------------------------------- Comité
   /manzanas:
     get:

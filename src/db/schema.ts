@@ -31,6 +31,7 @@ const coordenada = (columna: string) => decimal(columna, { precision: 9, scale: 
 export const ROLES = ['vecino', 'vigia', 'comite'] as const;
 export const ETIQUETAS = ['obras', 'seguridad', 'alumbrado', 'convivencia'] as const;
 export const TIPOS_PUBLICACION = ['actividad', 'noticia'] as const;
+export const PLATAFORMAS_PUSH = ['android', 'ios'] as const;
 
 /** Hasta 16 MB. La app manda fotos de ~200 KB (image_picker con maxWidth 1280 y calidad 70). */
 const mediumblob = customType<{ data: Buffer }>({ dataType: () => 'mediumblob' });
@@ -233,5 +234,21 @@ export const mensajes = mysqlTable(
     (t) => [
         foreignKey({ name: 'fk_mensajes_autor', columns: [t.autorId], foreignColumns: [vecinos.id] }).onDelete('cascade'),
         fkFoto('fk_mensajes_foto', t.fotoId),
+    ],
+);
+
+// Tokens FCM por dispositivo para avisar alertas SOS aunque la app esté cerrada.
+// La PK es el token: si otro vecino inicia sesión en el mismo celular, el upsert reasigna vecino_id.
+export const dispositivosPush = mysqlTable(
+    'dispositivos_push',
+    {
+        token: varchar('token', { length: 255 }).primaryKey(),
+        vecinoId: fk('vecino_id'),
+        plataforma: mysqlEnum('plataforma', PLATAFORMAS_PUSH).notNull().default('android'),
+        actualizadoEn: datetime('actualizado_en').notNull().default(ahora),
+    },
+    (t) => [
+        index('idx_dispositivos_vecino').on(t.vecinoId),
+        foreignKey({ name: 'fk_dispositivos_vecino', columns: [t.vecinoId], foreignColumns: [vecinos.id] }).onDelete('cascade'),
     ],
 );
